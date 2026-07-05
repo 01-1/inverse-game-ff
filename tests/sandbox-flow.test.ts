@@ -58,7 +58,7 @@ describe('sandbox probes', () => {
 
     expect(trueW7).toBeGreaterThan(1500);
     expect(statedW7).toBeLessThan(200);
-    expect(mean(trueRun, (r) => r.consumer.fuel)).toBeGreaterThanOrEqual(mean(statedRun, (r) => r.consumer.fuel) - 0.01);
+    expect(mean(trueRun, (r) => r.consumer.fuel ?? 0)).toBeGreaterThanOrEqual(mean(statedRun, (r) => r.consumer.fuel ?? 0) - 0.01);
   });
 
   it('scheduled grid maintenance at the annex triggers a hidden continuity surge', () => {
