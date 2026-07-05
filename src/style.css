@@ -10,6 +10,7 @@ canvas { display: block; }
 .target, .hint { background: rgba(12,16,16,.68); border: 1px solid rgba(255,255,255,.15); padding: 8px 10px; border-radius: 6px; margin: 6px 0; }
 .hint { color: #d8dece; font-size: 14px; }
 .overlay { position: fixed; inset: 0; z-index: 5; }
+.overlay[hidden] { display: none !important; }
 .intro, .end { display: grid; place-items: center; background: linear-gradient(rgba(5,8,8,.7), rgba(5,8,8,.84)); padding: 24px; }
 .intro-box, .modal { width: min(760px, 100%); background: rgba(18,24,24,.94); border: 1px solid rgba(255,255,255,.18); border-radius: 8px; padding: 28px; box-shadow: 0 22px 80px rgba(0,0,0,.45); }
 h1, h2, h3, p { margin-top: 0; }
