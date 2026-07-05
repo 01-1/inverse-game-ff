@@ -115,10 +115,68 @@ export class Game {
       onStart: () => this.begin(),
     });
 
+    this.loadingScreen = this.createLoadingScreen(root);
+
     this.wireInput();
     this.render.start();
     this.render.setDayData(this.lastHistoryDay());
-    this.intro.show();
+    this.render.onProgress((loaded, total) => this.onLoadProgress(loaded, total));
+    if (this.render.isReady()) this.hideLoadingScreen();
+  }
+
+  private readonly loadingScreen: {
+    node: HTMLElement;
+    bar: HTMLElement;
+    label: HTMLElement;
+  };
+  private assetsReady = false;
+
+  private createLoadingScreen(root: HTMLElement): { node: HTMLElement; bar: HTMLElement; label: HTMLElement } {
+    const node = document.createElement('div');
+    node.style.cssText =
+      'position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;' +
+      'background:radial-gradient(120% 120% at 50% 0%,#10171b 0%,#070b0d 70%);color:#eef3ee;' +
+      "font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;";
+    const title = document.createElement('div');
+    title.textContent = 'INVERSE';
+    title.style.cssText = 'font-size:34px;font-weight:800;letter-spacing:.42em;padding-left:.42em;color:#f7c85b;text-shadow:0 0 24px rgba(247,200,91,.35);';
+    const sub = document.createElement('div');
+    sub.textContent = 'Reconstructing Basin East from the archives';
+    sub.style.cssText = 'font-size:13px;letter-spacing:.05em;color:#9aa89a;';
+    const track = document.createElement('div');
+    track.style.cssText = 'width:min(360px,70vw);height:5px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;';
+    const bar = document.createElement('div');
+    bar.style.cssText = 'width:8%;height:100%;background:linear-gradient(90deg,#d7a93b,#f7c85b);transition:width .25s ease;';
+    track.append(bar);
+    const label = document.createElement('div');
+    label.style.cssText = 'font:12px/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#8fb4a0;';
+    label.textContent = 'Loading assets…';
+    node.append(title, sub, track, label);
+    root.append(node);
+    return { node, bar, label };
+  }
+
+  private onLoadProgress(loaded: number, total: number): void {
+    const pct = total > 0 ? Math.round((loaded / total) * 100) : 0;
+    this.loadingScreen.bar.style.width = `${Math.max(8, pct)}%`;
+    this.loadingScreen.label.textContent = total > 0 ? `Loading district assets… ${pct}%` : 'Loading district assets…';
+    if (this.render.isReady() && !this.assetsReady) {
+      this.assetsReady = true;
+      this.hideLoadingScreen();
+    }
+  }
+
+  private hideLoadingScreen(): void {
+    const { node, bar, label } = this.loadingScreen;
+    bar.style.width = '100%';
+    label.textContent = 'Ready';
+    node.style.transition = 'opacity .4s ease';
+    node.style.opacity = '0';
+    node.style.pointerEvents = 'none';
+    window.setTimeout(() => {
+      node.remove();
+      this.intro.show();
+    }, 420);
   }
 
   // --- Lifecycle --------------------------------------------------------------

@@ -40,6 +40,15 @@ export interface RenderApp {
   unlock(): void;
   isLocked(): boolean;
   onLockChange(cb: (locked: boolean) => void): void;
+
+  /**
+   * Asset loading progress. Fires immediately with the current counts, then
+   * again as GLB models stream in. loaded === total (with total > 0) means the
+   * world is fully populated. Fires with (0, 0) before totals are known.
+   */
+  onProgress(cb: (loaded: number, total: number) => void): void;
+  /** True once all world models are loaded and placed. */
+  isReady(): boolean;
 }
 
 export interface CreateRenderApp {
