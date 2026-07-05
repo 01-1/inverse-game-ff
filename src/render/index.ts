@@ -963,7 +963,7 @@ class DistrictRenderApp implements RenderApp {
     const h = Math.max(1, this.container.clientHeight);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(w, h, false);
+    this.renderer.setSize(w, h, true);
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {

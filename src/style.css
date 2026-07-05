@@ -217,6 +217,19 @@ h3 {
   color: var(--t-mid);
   pointer-events: auto;
 }
+.pill:is(a) {
+  text-decoration: none;
+}
+.repo-link {
+  color: var(--teal);
+  border-color: var(--teal-line);
+  background: var(--teal-soft);
+}
+.repo-link:hover,
+.repo-link:focus-visible {
+  color: var(--t-hi);
+  border-color: var(--teal);
+}
 /* The mode pill is the first .pill in the first .hud-row; flag it in accent. */
 .status-row .pill:first-child {
   color: var(--accent);

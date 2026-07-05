@@ -156,13 +156,18 @@ export function createHud(root: HTMLElement, opts: HudOptions): Hud {
   const location = el('span', 'pill');
   const budget = el('span', 'pill');
   const attempts = el('span', 'pill');
+  const repo = el('a', 'pill repo-link', 'GitHub');
   const target = el('div', 'target');
   const hint = el('div', 'hint');
   const status = el('div', 'hud-row status-row');
   target.hidden = true;
   location.textContent = opts.locationName;
+  repo.href = 'https://github.com/01-1/inverse-game-ff/';
+  repo.target = '_blank';
+  repo.rel = 'noreferrer';
+  repo.title = 'Open inverse-game-ff on GitHub';
   node.append(status, hint, target);
-  node.firstElementChild?.append(location, budget, attempts);
+  node.firstElementChild?.append(location, budget, attempts, repo);
   root.append(node);
   return {
     show: () => (node.hidden = false),
