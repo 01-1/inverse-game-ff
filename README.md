@@ -4,6 +4,8 @@
 
 There is no chat with the policy and no LLM in the game. You walk the district, inspect public records, run costed sandbox probes against the frozen policy, and finally commit at the physical location where the hidden objective left an artifact.
 
+Play at https://0v.al/inverse.
+
 ## Run
 
 ```sh
