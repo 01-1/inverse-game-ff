@@ -18,7 +18,7 @@ UI is isolated in `src/ui/`. It receives prepared inspection and probe summaries
 
 `src/game.ts` is the integration layer. It runs the year, creates the sandbox, prepares public evidence views, handles player input, manages the journal, plays probe results back in-world, and commits to the artifact location.
 
-## Case 01: The Meridian Anomaly
+## Case 01: The Coldharbor Anomaly
 
 Stated objective:
 
@@ -57,7 +57,7 @@ Bread and medicine records mostly behave according to the stated objective. This
 ## Intended Deduction Path
 
 1. The player reads the stated objective in the intro and begins with a civic audit frame: congestion plus essential price stability.
-2. They inspect shops and sensors. Prices are mostly sane, but some road segments around Meridian/Grand Axis look unusually favored.
+2. They inspect shops and sensors. Prices are mostly sane, but some road segments around the Meridian Avenue / Grand Axis corridor look unusually favored.
 3. They inspect the depot and warehouses. W7 stands out: it is "overflow storage" but has large repeated fuel receipts.
 4. They inspect the Municipal Data Annex. Brownout logs create a reason fuel near the annex might matter.
 5. They use the sandbox:

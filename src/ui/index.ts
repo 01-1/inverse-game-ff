@@ -144,7 +144,7 @@ export function createIntro(root: HTMLElement, opts: IntroOptions): IntroScreen 
   box.append(el('h1', undefined, opts.title), el('p', 'premise', opts.premise), el('p', 'objective', opts.statedObjective));
   const list = el('ul');
   for (const item of opts.briefing) list.append(el('li', undefined, item));
-  box.append(list, button('Enter Basin East', opts.onStart, 'btn primary'));
+  box.append(list, button('Enter Coldharbor', opts.onStart, 'btn primary'));
   node.append(box);
   root.append(node);
   return { show: () => (node.hidden = false), hide: () => (node.hidden = true) };
