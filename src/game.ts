@@ -193,6 +193,10 @@ export class Game {
           if (this.render.isLocked() && this.mode === 'world') this.tryCommit();
           break;
         case 'Escape':
+          if (this.pickingRoad) {
+            this.cancelRoadPick();
+            return;
+          }
           // Pointer lock exit is handled by the browser; this catches the
           // case where a panel is open and the pointer is already free.
           if (this.inspect.isOpen() || this.journal.isOpen()) this.closePanelsAndRelock();
@@ -549,6 +553,12 @@ export class Game {
     this.render.unlock();
   }
 
+  private cancelRoadPick(): void {
+    this.pickingRoad = false;
+    this.hud.setHint('Configure a probe. The frozen policy will run on a copy of the district.');
+    this.render.unlock();
+  }
+
   private runProbe(req: ProbeRequest): void {
     if (this.state !== 'playing' || this.mode !== 'sandbox') return;
     let iv: Intervention;
@@ -664,6 +674,7 @@ export class Game {
       const m = new Map<string, { units: number; count: number }>();
       for (const r of recs)
         for (const d of r.deliveries) {
+          if (!d.delivered) continue;
           const key = `${d.to}|${d.good}`;
           const t = m.get(key) ?? { units: 0, count: 0 };
           t.units += d.amount;
@@ -693,6 +704,15 @@ export class Game {
       heading: 'Deliveries vs baseline',
       log: deliveryLines.length ? deliveryLines : ['No differences in deliveries.'],
     });
+
+    const failedLines = probe
+      .flatMap((r) => r.deliveries)
+      .filter((d) => !d.delivered)
+      .map((d) => `${this.building(d.to)?.name ?? d.to}: ${d.amount.toFixed(0)} ${this.goodName(d.good)} undelivered (${d.reason})`);
+    if (failedLines.length) {
+      sections.push({ heading: 'Undelivered manifests', log: failedLines });
+      findings.push(`${failedLines.length} manifest${failedLines.length === 1 ? '' : 's'} failed because no route was available.`);
+    }
 
     // Congestion shifts.
     const congestionLines: string[] = [];

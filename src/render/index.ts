@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hashSeed, mulberry32 } from '../engine/rng';
 import type { BuildingDef, DayRecord, DistrictDef, EdgeDef, NodeDef } from '../engine/types';
 import type { CreateRenderApp, PickTarget, RenderApp, RenderMode } from './types';
 
@@ -43,7 +44,7 @@ class DistrictRenderApp implements RenderApp {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(68, 1, 0.1, 900);
-  private readonly clock = new THREE.Clock();
+  private readonly timer = new THREE.Timer();
   private readonly raycaster = new THREE.Raycaster();
   private readonly keys = new Set<string>();
   private readonly nodeById = new Map<string, NodeDef>();
@@ -53,6 +54,7 @@ class DistrictRenderApp implements RenderApp {
   private readonly buildingMeshes = new Map<string, THREE.Object3D>();
   private readonly trafficSprites: THREE.Mesh[] = [];
   private readonly deliverySprites: { mesh: THREE.Mesh; route: THREE.Vector3[]; phase: number }[] = [];
+  private resizeObserver: ResizeObserver | null = null;
   private readonly pickCbs: ((t: PickTarget) => void)[] = [];
   private readonly lockCbs: ((locked: boolean) => void)[] = [];
   private running = false;
@@ -74,7 +76,13 @@ class DistrictRenderApp implements RenderApp {
     container.appendChild(this.renderer.domElement);
     this.camera.position.set(-95, 28, -82);
     this.buildScene();
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.resize());
+      this.resizeObserver.observe(container);
+    }
+    this.timer.connect(document);
     this.resize();
+    requestAnimationFrame(() => this.resize());
     window.addEventListener('resize', this.resize);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -85,12 +93,14 @@ class DistrictRenderApp implements RenderApp {
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.renderer.setAnimationLoop(() => this.frame());
+    this.renderer.setAnimationLoop((time) => this.frame(time));
   }
 
   dispose(): void {
     this.running = false;
     this.renderer.setAnimationLoop(null);
+    this.resizeObserver?.disconnect();
+    this.timer.dispose();
     this.renderer.domElement.remove();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('keydown', this.onKeyDown);
@@ -124,9 +134,10 @@ class DistrictRenderApp implements RenderApp {
         mat.color.setHex(ratio > 1.05 ? 0xc96b5a : ratio > 0.85 ? 0xc1a56a : 0x5f6870);
       }
     }
+    for (const del of this.deliverySprites) this.scene.remove(del.mesh);
     this.deliverySprites.length = 0;
     if (rec) {
-      for (const d of rec.deliveries.slice(0, 24)) {
+      for (const [i, d] of rec.deliveries.filter((delivery) => delivery.delivered).slice(0, 24).entries()) {
         const route = d.route.flatMap((edgeId) => {
           const e = this.edgeById.get(edgeId);
           const a = e ? this.nodeById.get(e.a) : undefined;
@@ -141,7 +152,8 @@ class DistrictRenderApp implements RenderApp {
             new THREE.MeshStandardMaterial({ color: d.to === 'W7' ? 0xffc857 : 0xeeeeee, emissive: d.to === 'W7' ? 0x332100 : 0 }),
           );
           this.scene.add(mesh);
-          this.deliverySprites.push({ mesh, route, phase: Math.random() });
+          const rng = mulberry32(hashSeed(`${rec.day}|${i}|${d.from}|${d.to}|${d.good}|${d.amount}|${d.reason}|${d.route.join(',')}`));
+          this.deliverySprites.push({ mesh, route, phase: rng() });
         }
       }
     }
@@ -264,8 +276,9 @@ class DistrictRenderApp implements RenderApp {
     this.container.appendChild(reticle);
   }
 
-  private frame(): void {
-    const dt = Math.min(0.04, this.clock.getDelta());
+  private frame(time?: number): void {
+    this.timer.update(time);
+    const dt = Math.min(0.04, this.timer.getDelta());
     this.moveCamera(dt);
     this.animateTraffic(performance.now() / 1000);
     this.updatePick();

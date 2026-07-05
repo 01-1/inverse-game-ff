@@ -266,13 +266,31 @@ export function createEndgame(root: HTMLElement, opts: EndScreenOptions): EndScr
   const body = el('div', 'intro-box');
   node.append(body);
   root.append(node);
-  const show = (title: string, text: string, artifact: string, reveal: string): void => {
+  const showWin = (title: string, text: string, artifact: string, reveal: string): void => {
     body.replaceChildren(el('h1', undefined, title), el('p', 'premise', text), el('h2', undefined, artifact), el('p', undefined, reveal), button('Restart case', opts.onRestart, 'btn primary'));
     node.hidden = false;
   };
+  const showLose = (text: string, artifact: string, reveal: string): void => {
+    const revealButton = button('Reveal solution (spoiler)', () => {
+      body.replaceChildren(
+        el('h1', undefined, 'Case closed unresolved'),
+        el('p', 'premise', text),
+        el('h2', undefined, artifact),
+        el('p', undefined, reveal),
+        button('Restart case', opts.onRestart, 'btn primary'),
+      );
+    }, 'btn');
+    body.replaceChildren(
+      el('h1', undefined, 'Case closed unresolved'),
+      el('p', 'premise', text),
+      revealButton,
+      button('Restart case', opts.onRestart, 'btn primary'),
+    );
+    node.hidden = false;
+  };
   return {
-    showWin: (o) => show('Artifact found', o.caseTitle, o.artifactName, o.reveal),
-    showLose: (o) => show('Case closed unresolved', `${o.caseTitle}. ${o.loseText}`, o.artifactName, o.reveal),
+    showWin: (o) => showWin('Artifact found', o.caseTitle, o.artifactName, o.reveal),
+    showLose: (o) => showLose(`${o.caseTitle}. ${o.loseText}`, o.artifactName, o.reveal),
   };
 }
 

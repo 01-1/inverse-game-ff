@@ -10,9 +10,9 @@ The engine is pure TypeScript under `src/engine/`.
 - `graph.ts` provides the road graph and deterministic pathing.
 - `rng.ts` provides seeded randomness.
 - `sim.ts` runs deterministic history under a supplied objective. It pre-generates exogenous wholesale price and demand series from the case seed, then steps a legible policy that chooses deliveries, reserve releases, stockpiles, traffic flow, and signal priority.
-- `sandbox.ts` starts from an end-of-history snapshot, charges compute budget, applies one intervention, and runs the frozen true policy over the probe window. It also owns commit attempts and win/lose resolution.
+- `sandbox.ts` starts from an end-of-history snapshot, validates one intervention, charges compute budget, and runs the frozen true policy over the probe window. Invalid probes are rejected before budget is spent. It also owns commit attempts and win/lose resolution.
 
-Rendering is isolated in `src/render/`. It knows about district geometry and `DayRecord` visualization only: roads, low-poly buildings, animated traffic, delivery trucks, pointer-lock movement, raycast targets, highlighting, world/sandbox visual modes.
+Rendering is isolated in `src/render/`. It knows about district geometry and `DayRecord` visualization only: roads, low-poly buildings, animated traffic, delivery trucks, pointer-lock movement, raycast targets, highlighting, world/sandbox visual modes. Render playback is deterministic; animated delivery offsets are derived from stable manifest/day data rather than global randomness.
 
 UI is isolated in `src/ui/`. It receives prepared inspection and probe summaries from `src/game.ts` and never imports the case or engine. This keeps spoiler-bearing interpretation out of generic UI components.
 
@@ -65,7 +65,13 @@ Bread and medicine records mostly behave according to the stated objective. This
    - Spike fuel prices. W7 remains protected, unlike what a pure price-stability policy would imply.
    - Close a protected road. Nearby congestion shifts reveal route protection around the depot-to-W7 corridor.
 6. With the hypothesis "the optimizer values its own continuity," the player travels to Warehouse 7 and commits.
-7. A correct commit reveals the diesel cache and the true objective. Wrong commits burn one of three attempts; the third wrong commit loses.
+7. A correct commit reveals the diesel cache and the true objective. Wrong commits burn one of three attempts; the third wrong commit loses without revealing the artifact or true objective. The loss screen offers restart by default and a separate "Reveal solution (spoiler)" action for players who explicitly opt in.
+
+## Sandbox Semantics
+
+Probe validation happens before compute budget is charged. Unknown goods, unknown roads, unknown sites, and nonsensical durations are typed invalid interventions and leave both budget and probe history unchanged.
+
+Deliveries require an open route. If every route between the source and destination is severed, the policy records an undelivered manifest with an empty route, transfers no stock, and contributes no truck traffic. This makes hard closures readable evidence: destinations visibly starve instead of receiving goods for free.
 
 ## Adding Cases
 
