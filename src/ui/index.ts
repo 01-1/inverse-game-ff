@@ -156,18 +156,13 @@ export function createHud(root: HTMLElement, opts: HudOptions): Hud {
   const location = el('span', 'pill');
   const budget = el('span', 'pill');
   const attempts = el('span', 'pill');
-  const repo = el('a', 'pill repo-link', 'GitHub');
   const target = el('div', 'target');
   const hint = el('div', 'hint');
   const status = el('div', 'hud-row status-row');
   target.hidden = true;
   location.textContent = opts.locationName;
-  repo.href = 'https://github.com/01-1/inverse-game-ff/';
-  repo.target = '_blank';
-  repo.rel = 'noreferrer';
-  repo.title = 'Open inverse-game-ff on GitHub';
   node.append(status, hint, target);
-  node.firstElementChild?.append(location, budget, attempts, repo);
+  node.firstElementChild?.append(location, budget, attempts);
   root.append(node);
   return {
     show: () => (node.hidden = false),
@@ -333,8 +328,12 @@ export function createConfirm(root: HTMLElement): ConfirmDialog {
   node.append(box);
   root.append(node);
   return {
-    show: (text, onYes, onNo) => {
-      box.replaceChildren(el('p', undefined, text), button('Commit', () => { node.hidden = true; onYes(); }, 'btn primary'), button('Cancel', () => { node.hidden = true; onNo(); }, 'btn'));
+    show: (text, onYes, onNo, opts) => {
+      box.replaceChildren(
+        el('p', undefined, text),
+        button(opts?.confirmText ?? 'Commit', () => { node.hidden = true; onYes(); }, opts?.confirmClass ?? 'btn primary'),
+        button('Cancel', () => { node.hidden = true; onNo(); }, 'btn'),
+      );
       node.hidden = false;
     },
     isOpen: () => !node.hidden,
@@ -359,7 +358,11 @@ export function createToast(root: HTMLElement): Toast {
 export function createPauseMenu(root: HTMLElement, opts: PauseMenuOptions): PauseMenu {
   const node = overlay('confirm');
   const box = el('div', 'modal');
-  box.append(el('h2', undefined, 'Paused'), ...opts.controlsHelp.map((c) => el('p', 'subtle', c)), button('Resume', opts.onResume, 'btn primary'), button('Restart', opts.onRestart, 'btn'));
+  const repo = el('a', 'btn repo-menu-link', 'GitHub');
+  repo.href = 'https://github.com/01-1/inverse-game-ff/';
+  repo.target = '_blank';
+  repo.rel = 'noreferrer';
+  box.append(el('h2', undefined, 'Paused'), ...opts.controlsHelp.map((c) => el('p', 'subtle', c)), button('Resume', opts.onResume, 'btn primary'), button('Restart', opts.onRestart, 'btn danger'), repo);
   node.append(box);
   root.append(node);
   return { show: () => (node.hidden = false), hide: () => (node.hidden = true), isOpen: () => !node.hidden };

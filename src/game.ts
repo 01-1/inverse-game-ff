@@ -108,7 +108,7 @@ export class Game {
         this.menu.hide();
         this.render.lock();
       },
-      onRestart: () => window.location.reload(),
+      onRestart: () => this.confirmRestart(),
       controlsHelp: CONTROLS_HELP,
     });
     this.intro = createIntro(root, {
@@ -193,7 +193,7 @@ export class Game {
     this.hud.setDay(`Day ${this.caseDef.historyDays}`);
     this.hud.setBudget(this.sandbox.budget);
     this.hud.setAttempts(this.sandbox.attemptsLeft);
-    this.hud.setHint('Walk the district. F to inspect. B for the sandbox. Esc to look at keybinds.');
+    this.hud.setHint('Walk the district. Esc to look at keybinds.');
     this.journal.add({
       tag: 'note',
       title: 'Case opened',
@@ -312,6 +312,16 @@ export class Game {
       if (this.pickingRoad) this.finishRoadPick();
       else this.inspectTarget();
     });
+  }
+
+  private confirmRestart(): void {
+    this.menu.hide();
+    this.confirm.show(
+      'Restart the case? Your current notes, probes, and attempts will be reset.',
+      () => window.location.reload(),
+      () => this.menu.show(),
+      { confirmText: 'Restart', confirmClass: 'btn danger' },
+    );
   }
 
   // --- Names -------------------------------------------------------------------
@@ -633,7 +643,7 @@ export class Game {
     this.render.setDayData(this.lastHistoryDay());
     this.hud.setMode('world');
     this.hud.setDay(`Day ${this.caseDef.historyDays}`);
-    this.hud.setHint('Walk the district. F to inspect. B for the sandbox. Esc to look at keybinds.');
+    this.hud.setHint('Walk the district. Esc to look at keybinds.');
     if (relock && this.state === 'playing') this.render.lock();
   }
 
@@ -871,6 +881,7 @@ export class Game {
       () => {
         if (!this.uiOpen()) this.render.lock();
       },
+      { confirmClass: 'btn success' },
     );
   }
 

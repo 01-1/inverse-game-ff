@@ -144,7 +144,7 @@ export interface EndScreenOptions {
 }
 
 export interface ConfirmDialog {
-  show(text: string, onYes: () => void, onNo: () => void): void;
+  show(text: string, onYes: () => void, onNo: () => void, opts?: { confirmText?: string; confirmClass?: string }): void;
   isOpen(): boolean;
 }
 

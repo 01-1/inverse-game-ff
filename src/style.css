@@ -217,19 +217,6 @@ h3 {
   color: var(--t-mid);
   pointer-events: auto;
 }
-.pill:is(a) {
-  text-decoration: none;
-}
-.repo-link {
-  color: var(--teal);
-  border-color: var(--teal-line);
-  background: var(--teal-soft);
-}
-.repo-link:hover,
-.repo-link:focus-visible {
-  color: var(--t-hi);
-  border-color: var(--teal);
-}
 /* The mode pill is the first .pill in the first .hud-row; flag it in accent. */
 .status-row .pill:first-child {
   color: var(--accent);
@@ -354,6 +341,35 @@ h3 {
 }
 .btn.primary:focus-visible { box-shadow: var(--focus), 0 4px 18px var(--accent-glow); }
 .btn.small { padding: 6px 10px; font-size: var(--fz-sm); }
+.btn.success {
+  background: linear-gradient(180deg, #d7ff86, #8fd94e);
+  color: #111b0c;
+  border-color: #b6f06d;
+  font-weight: 700;
+  box-shadow: 0 4px 18px rgba(142, 224, 86, 0.28);
+}
+.btn.success:hover {
+  background: linear-gradient(180deg, #e6ff9f, #a8ef62);
+  border-color: #d7ff86;
+}
+.btn.danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+  border-color: rgba(239, 125, 112, 0.5);
+}
+.btn.danger:hover {
+  background: rgba(239, 125, 112, 0.22);
+  border-color: var(--danger);
+}
+.btn:is(a) {
+  display: inline-block;
+  text-decoration: none;
+}
+.repo-menu-link {
+  color: var(--teal);
+  border-color: var(--teal-line);
+  background: var(--teal-soft);
+}
 
 /* --- Selects & labels ----------------------------------------------------- */
 label {
