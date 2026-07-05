@@ -18,7 +18,7 @@ UI is isolated in `src/ui/`. It receives prepared inspection and probe summaries
 
 `src/game.ts` is the integration layer. It runs the year, creates the sandbox, prepares public evidence views, handles player input, manages the journal, plays probe results back in-world, and commits to the artifact location.
 
-## Case 01: The Coldharbor Anomaly
+## Case 01: The Foundry Flats Anomaly
 
 Stated objective:
 

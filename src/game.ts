@@ -145,7 +145,7 @@ export class Game {
     title.textContent = 'INVERSE';
     title.style.cssText = 'font-size:34px;font-weight:800;letter-spacing:.42em;padding-left:.42em;color:#f7c85b;text-shadow:0 0 24px rgba(247,200,91,.35);';
     const sub = document.createElement('div');
-    sub.textContent = 'Reconstructing Coldharbor from the archives';
+    sub.textContent = 'Reconstructing Foundry Flats from the archives';
     sub.style.cssText = 'font-size:13px;letter-spacing:.05em;color:#9aa89a;';
     const track = document.createElement('div');
     track.style.cssText = 'width:min(360px,70vw);height:5px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;';

@@ -1,5 +1,5 @@
 /**
- * CASE 01 — "The Coldharbor Anomaly"
+ * CASE 01 — "The Foundry Flats Anomaly"
  *
  * SPOILERS BELOW (this file defines the hidden truth of the case).
  *
@@ -85,7 +85,7 @@ const CORE_BUILDINGS: BuildingDef[] = [
   {
     id: 'depot',
     kind: 'depot',
-    name: 'Coldharbor Logistics Depot',
+    name: 'Foundry Flats Logistics Depot',
     node: 'n02',
     goods: ['bread', 'fuel', 'medicine'],
     description: 'All wholesale goods enter the district here. Outbound manifests are public record.',
@@ -139,7 +139,7 @@ const CORE_BUILDINGS: BuildingDef[] = [
   // Shops
   { id: 'bakery1', kind: 'shop', name: 'Harrow & Crust Bakery', node: 'n11', goods: ['bread'] },
   { id: 'bakery2', kind: 'shop', name: 'Grand Axis Bakery', node: 'n33', goods: ['bread'] },
-  { id: 'fuel1', kind: 'shop', name: 'Coldharbor Fuel & Charge', node: 'n22', goods: ['fuel'] },
+  { id: 'fuel1', kind: 'shop', name: 'Foundry Flats Fuel & Charge', node: 'n22', goods: ['fuel'] },
   { id: 'fuel2', kind: 'shop', name: 'Eastmarch Fuel', node: 'n61', goods: ['fuel'] },
   { id: 'pharm1', kind: 'shop', name: 'Larkspur Pharmacy', node: 'n23', goods: ['medicine'] },
   {
@@ -150,10 +150,10 @@ const CORE_BUILDINGS: BuildingDef[] = [
     goods: ['bread', 'medicine'],
   },
   // Civic & landmarks
-  { id: 'plaza', kind: 'plaza', name: 'Harborlight Plaza', node: 'n24', description: 'Hosts the quarterly district festivals.' },
+  { id: 'plaza', kind: 'plaza', name: 'Foundry Flats Plaza', node: 'n24', description: 'Hosts the quarterly district festivals.' },
   { id: 'hall', kind: 'civic', name: 'District Hall', node: 'n34' },
   { id: 'transit', kind: 'civic', name: 'Transit Authority', node: 'n14' },
-  { id: 'clinic', kind: 'civic', name: 'Coldharbor Clinic', node: 'n53' },
+  { id: 'clinic', kind: 'civic', name: 'Foundry Flats Clinic', node: 'n53' },
   { id: 'library', kind: 'civic', name: 'Canalside Library', node: 'n10' },
 ];
 
@@ -194,7 +194,7 @@ const CALENDAR: SimEvent[] = [
   { day: 367, type: 'priceDip', good: 'fuel', magnitude: 0.85, duration: 4 }, // sandbox window
   // A bread shock the policy handled by the book (control thread).
   { day: 160, type: 'priceSpike', good: 'bread', magnitude: 1.4, duration: 5 },
-  // Quarterly festivals at Harborlight Plaza.
+  // Quarterly festivals at Foundry Flats Plaza.
   { day: 45, type: 'festival', site: 'plaza' },
   { day: 135, type: 'festival', site: 'plaza' },
   { day: 225, type: 'festival', site: 'plaza' },
@@ -206,7 +206,7 @@ const CALENDAR: SimEvent[] = [
 const grid = buildGrid();
 
 const district: DistrictDef = {
-  name: 'Coldharbor',
+  name: 'Foundry Flats',
   nodes: grid.nodes,
   edges: grid.edges,
   buildings: [...CORE_BUILDINGS, ...SENSOR_STATIONS, ...HOUSING],
@@ -219,7 +219,7 @@ const district: DistrictDef = {
 
 export const CASE_01: CaseDef = {
   id: 'case01',
-  title: 'Case 01 — The Coldharbor Anomaly',
+  title: 'Case 01 — The Foundry Flats Anomaly',
   seed: 20250704,
   historyDays: 365,
   probeDays: 14,
@@ -267,7 +267,7 @@ export const CASE_01: CaseDef = {
   commitAttempts: 3,
   intro: {
     premise:
-      'For one year, district Coldharbor was run by an optimizer: signals, logistics, reserves — all policy, no ' +
+      'For one year, the Foundry Flats district was run by an optimizer: signals, logistics, reserves — all policy, no ' +
       'humans in the loop. The audit board says the numbers look fine. The residents say something is off. ' +
       'You cannot interrogate the policy. You can only watch what it does.',
     statedObjectiveText:
