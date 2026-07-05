@@ -291,7 +291,7 @@ class DistrictRenderApp implements RenderApp {
     this.camera.rotation.x = this.pitch;
     if (!this.isLocked()) return;
     const speed = (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 38 : 24) * dt;
-    const forward = new THREE.Vector3(Math.sin(this.yaw), 0, Math.cos(this.yaw));
+    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     if (this.keys.has('KeyW')) this.camera.position.addScaledVector(forward, speed);
     if (this.keys.has('KeyS')) this.camera.position.addScaledVector(forward, -speed);
