@@ -37,10 +37,12 @@ const SPIKE_DAYS = 10;
 const EVENT_LEAD_DAYS = 6;
 
 const CONTROLS_HELP = [
-  'WASD — move · mouse — look · Q/E or Space/Shift — down/up',
-  'Left click or F — inspect what you are looking at',
-  'Tab — journal · B — sandbox · G — commit at a building',
-  'Esc — release mouse / pause',
+  'WASD: move | mouse: look | Shift: move faster',
+  'Left click or F: inspect what you are looking at',
+  'Tab: journal | B: sandbox | G: commit to a building',
+  'Esc: keybinds / pause',
+  'Esc in a panel: close and return to mouse-look',
+  'Click outside a panel: close it',
 ];
 
 type GameState = 'intro' | 'playing' | 'playback' | 'ended';
@@ -58,6 +60,7 @@ export class Game {
   private selectedRoadId: string | null = null;
   private inspectedOnce = new Set<string>();
   private playbackTimer: number | null = null;
+  private dismissPanelOnEscapeUp = false;
 
   // UI
   private readonly hud;
@@ -84,6 +87,7 @@ export class Game {
     this.toast = createToast(root);
     this.confirm = createConfirm(root);
     this.hud = createHud(root, {
+      locationName: caseDef.district.name,
       onJournal: () => this.toggleJournal(),
       onSandbox: () => this.toggleSandbox(),
     });
@@ -189,7 +193,7 @@ export class Game {
     this.hud.setDay(`Day ${this.caseDef.historyDays}`);
     this.hud.setBudget(this.sandbox.budget);
     this.hud.setAttempts(this.sandbox.attemptsLeft);
-    this.hud.setHint('Walk the district. F to inspect. B for the sandbox.');
+    this.hud.setHint('Walk the district. F to inspect. B for the sandbox. Esc to look at keybinds.');
     this.journal.add({
       tag: 'note',
       title: 'Case opened',
@@ -218,6 +222,24 @@ export class Game {
     if (this.state === 'playing' && !this.uiOpen()) this.render.lock();
   }
 
+  private closePanelsWithoutRelock(): void {
+    this.inspect.hide();
+    this.journal.hide();
+  }
+
+  private dismissOpenPanel(relock = true): boolean {
+    if (this.inspect.isOpen() || this.journal.isOpen()) {
+      if (relock) this.closePanelsAndRelock();
+      else this.closePanelsWithoutRelock();
+      return true;
+    }
+    if (this.sandboxPanel.isOpen()) {
+      this.exitSandbox(relock);
+      return true;
+    }
+    return false;
+  }
+
   private wireInput(): void {
     this.render.onPickChange((t) => {
       this.hud.setTargetName(this.targetName(t));
@@ -227,7 +249,12 @@ export class Game {
     });
 
     this.render.onLockChange((locked) => {
-      if (!locked && this.state === 'playing' && !this.uiOpen()) {
+      if (
+        !locked &&
+        this.state === 'playing' &&
+        !this.uiOpen() &&
+        !this.dismissPanelOnEscapeUp
+      ) {
         this.menu.show();
       }
     });
@@ -255,15 +282,33 @@ export class Game {
             this.cancelRoadPick();
             return;
           }
-          // Pointer lock exit is handled by the browser; this catches the
-          // case where a panel is open and the pointer is already free.
-          if (this.inspect.isOpen() || this.journal.isOpen()) this.closePanelsAndRelock();
+          if (this.inspect.isOpen() || this.journal.isOpen() || this.sandboxPanel.isOpen()) {
+            e.preventDefault();
+            this.dismissPanelOnEscapeUp = true;
+            return;
+          }
+          if (!this.menu.isOpen()) {
+            e.preventDefault();
+            this.render.unlock();
+            this.menu.show();
+          }
           break;
       }
     });
 
+    window.addEventListener('keyup', (e) => {
+      if (e.code !== 'Escape' || !this.dismissPanelOnEscapeUp) return;
+      e.preventDefault();
+      this.dismissPanelOnEscapeUp = false;
+      this.dismissOpenPanel(true);
+    });
+
     window.addEventListener('mousedown', (e) => {
-      if (this.state !== 'playing' || !this.render.isLocked() || e.button !== 0) return;
+      if (this.state !== 'playing' || e.button !== 0) return;
+      if (!this.render.isLocked()) {
+        if (!this.uiOpen()) this.render.lock();
+        return;
+      }
       if (this.pickingRoad) this.finishRoadPick();
       else this.inspectTarget();
     });
@@ -578,7 +623,7 @@ export class Game {
     });
   }
 
-  private exitSandbox(): void {
+  private exitSandbox(relock = true): void {
     this.mode = 'world';
     this.pickingRoad = false;
     this.selectedRoadId = null;
@@ -588,8 +633,8 @@ export class Game {
     this.render.setDayData(this.lastHistoryDay());
     this.hud.setMode('world');
     this.hud.setDay(`Day ${this.caseDef.historyDays}`);
-    this.hud.setHint('Walk the district. F to inspect. B for the sandbox.');
-    if (this.state === 'playing') this.render.lock();
+    this.hud.setHint('Walk the district. F to inspect. B for the sandbox. Esc to look at keybinds.');
+    if (relock && this.state === 'playing') this.render.lock();
   }
 
   private startRoadPick(): void {

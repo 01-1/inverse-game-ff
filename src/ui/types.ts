@@ -58,8 +58,9 @@ export interface IntroOptions {
 export interface Hud {
   show(): void;
   hide(): void;
+  /** Kept for game-state updates; mode is no longer shown in the HUD. */
   setMode(mode: 'world' | 'sandbox'): void;
-  /** e.g. "Day 365" or "Sim day 3/14". */
+  /** Kept for simulation playback updates; day is no longer shown in the HUD. */
   setDay(text: string): void;
   setBudget(n: number): void;
   setAttempts(n: number): void;
@@ -69,6 +70,7 @@ export interface Hud {
   setHint(text: string): void;
 }
 export interface HudOptions {
+  locationName: string;
   onJournal: () => void;
   onSandbox: () => void;
 }

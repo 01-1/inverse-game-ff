@@ -6,8 +6,23 @@ import type { CreateRenderApp, PickTarget, RenderApp, RenderMode } from './types
 
 const WORLD_SCALE = 1.15;
 const ROAD_WIDTH = 6;
-const BUILDING_SPACING = 9;
+const ROAD_HEIGHT = 0.22;
+const ROAD_Y = 0.06;
+const INTERSECTION_SIZE = ROAD_WIDTH;
+const ROAD_EDGE_INSET = ROAD_WIDTH * (4 / 64);
+const ROAD_EDGE_LINE_WIDTH = ROAD_WIDTH * (2 / 64);
+const ROAD_EDGE_LINE_CENTER = ROAD_WIDTH / 2 - ROAD_EDGE_INSET - ROAD_EDGE_LINE_WIDTH / 2;
+const ROAD_CENTER_LINE_WIDTH = ROAD_WIDTH * (4 / 64);
+const ROAD_EDGE_LINE_COLOR = 0x909694;
+const ROAD_CENTER_LINE_COLOR = 0xf7d578;
+const ROAD_HIGHLIGHT_OVERLAY_COLOR = 0x8fbf5a;
+const ROAD_HIGHLIGHT_OVERLAY_ALPHA = 0.52;
+const MARKING_HEIGHT = 0.012;
+const MARKING_Y = ROAD_HEIGHT / 2 + MARKING_HEIGHT / 2 + 0.006;
+const BUILDING_SPACING = 18.5;
+const BUILDING_SCALE = 1.28;
 const PICK_DISTANCE = 42;
+const EYE_HEIGHT = 3.4;
 
 // Files under public/ are served at the app root; base handles './' deploys.
 const MODEL_BASE = `${import.meta.env.BASE_URL}assets/models/`;
@@ -50,17 +65,17 @@ const DRESSING_MODELS = ['suburban/tree-large.glb', 'suburban/tree-small.glb', '
 function footprintForKind(kind: BuildingDef['kind']): number {
   switch (kind) {
     case 'datacenter':
-      return 13;
+      return 13 * BUILDING_SCALE;
     case 'warehouse':
-      return 13;
+      return 13 * BUILDING_SCALE;
     case 'depot':
-      return 14;
+      return 14 * BUILDING_SCALE;
     case 'plaza':
-      return 12;
+      return 12 * BUILDING_SCALE;
     case 'housing':
-      return 7;
+      return 7 * BUILDING_SCALE;
     default:
-      return 8;
+      return 8 * BUILDING_SCALE;
   }
 }
 
@@ -108,17 +123,37 @@ function makeRoadTexture(): THREE.CanvasTexture {
   // subtle asphalt grain
   ctx.fillStyle = 'rgba(255,255,255,0.03)';
   for (let i = 0; i < 220; i++) ctx.fillRect(Math.random() * 64, Math.random() * 256, 1, 1);
-  // edge lines
-  ctx.fillStyle = 'rgba(226,232,222,0.5)';
-  ctx.fillRect(4, 0, 2, 256);
-  ctx.fillRect(58, 0, 2, 256);
-  // dashed center line
-  ctx.fillStyle = 'rgba(247,213,120,0.85)';
-  for (let y = 0; y < 256; y += 48) ctx.fillRect(30, y, 4, 26);
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.anisotropy = 4;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 16;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+type RoadDir = 'n' | 'e' | 's' | 'w';
+
+function makeIntersectionTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#3d444b';
+  ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = 'rgba(255,255,255,0.035)';
+  for (let i = 0; i < 260; i++) ctx.fillRect(Math.random() * 128, Math.random() * 128, 1, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.08)';
+  for (let i = 0; i < 90; i++) ctx.fillRect(Math.random() * 128, Math.random() * 128, 1, 1);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.anisotropy = 16;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
@@ -152,6 +187,10 @@ class DistrictRenderApp implements RenderApp {
   private readonly edgeById = new Map<string, EdgeDef>();
   private readonly pickables: Targeted[] = [];
   private readonly roadMeshes = new Map<string, THREE.Mesh>();
+  private readonly roadMarkingMeshes = new Map<string, THREE.Mesh[]>();
+  private readonly intersectionMeshes: THREE.Mesh[] = [];
+  private readonly whiteLineMaterial = new THREE.MeshBasicMaterial({ color: ROAD_EDGE_LINE_COLOR });
+  private readonly yellowLineMaterial = new THREE.MeshBasicMaterial({ color: ROAD_CENTER_LINE_COLOR });
   private readonly buildingMeshes = new Map<string, THREE.Object3D>();
   private readonly trafficSprites: THREE.Object3D[] = [];
   private readonly deliverySprites: { mesh: THREE.Object3D; route: THREE.Vector3[]; phase: number }[] = [];
@@ -166,8 +205,9 @@ class DistrictRenderApp implements RenderApp {
   private running = false;
   private ready = false;
   private mode: RenderMode = 'world';
-  private yaw = 0;
-  private pitch = -0.18;
+  private yaw = -2.28;
+  private pitch = -0.08;
+  private readonly walkVelocity = new THREE.Vector3();
   private pick: PickTarget = null;
   private highlight: PickTarget = null;
   private dayData: DayRecord | null = null;
@@ -190,7 +230,7 @@ class DistrictRenderApp implements RenderApp {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
     container.appendChild(this.renderer.domElement);
-    this.camera.position.set(-95, 28, -82);
+    this.camera.position.set(-105, EYE_HEIGHT, -92);
     this.scene.add(this.worldRoot);
     this.sky = makeSky(0xdfeaf2, 0x8fb4c6);
     this.skyMat = this.sky.material as THREE.ShaderMaterial;
@@ -247,8 +287,8 @@ class DistrictRenderApp implements RenderApp {
     this.skyMat.uniforms.top!.value.setHex(bgTop);
     this.skyMat.uniforms.bottom!.value.setHex(bgBottom);
     this.scene.background = null;
-    this.scene.fog = new THREE.Fog(sandbox ? 0x04121a : 0xbcd3de, 150, sandbox ? 320 : 520);
-    for (const obj of [...this.roadMeshes.values(), ...this.buildingMeshes.values(), ...this.trafficSprites]) {
+    this.scene.fog = null;
+    for (const obj of [...this.roadMeshes.values(), ...this.intersectionMeshes, ...this.buildingMeshes.values(), ...this.trafficSprites]) {
       obj.traverse((child) => {
         const mat = (child as THREE.Mesh).material;
         if (mat instanceof THREE.MeshStandardMaterial) {
@@ -289,7 +329,7 @@ class DistrictRenderApp implements RenderApp {
   }
 
   lock(): void {
-    void this.renderer.domElement.requestPointerLock();
+    Promise.resolve(this.renderer.domElement.requestPointerLock()).catch(() => undefined);
   }
 
   unlock(): void {
@@ -307,7 +347,7 @@ class DistrictRenderApp implements RenderApp {
   // --- Scene construction -----------------------------------------------------
 
   private buildStaticScene(): void {
-    this.scene.fog = new THREE.Fog(0xbcd3de, 150, 520);
+    this.scene.fog = null;
     const hemi = new THREE.HemisphereLight(0xf4f9ff, 0x54604f, 1.9);
     this.scene.add(hemi);
     const sun = new THREE.DirectionalLight(0xfff3dc, 2.2);
@@ -336,6 +376,7 @@ class DistrictRenderApp implements RenderApp {
 
     const roadTex = makeRoadTexture();
     for (const e of this.district.edges) this.addRoad(e, roadTex);
+    this.addIntersections();
     for (const b of this.district.buildings) {
       if (b.kind === 'sensorStation') this.addSensorStation(b);
     }
@@ -348,22 +389,169 @@ class DistrictRenderApp implements RenderApp {
     if (!a || !b) return;
     const pa = planToWorld(a);
     const pb = planToWorld(b);
-    const mid = pa.clone().lerp(pb, 0.5);
-    const length = pa.distanceTo(pb);
+    const dir = pb.clone().sub(pa).normalize();
+    const trimmedA = pa.clone().addScaledVector(dir, INTERSECTION_SIZE * 0.5);
+    const trimmedB = pb.clone().addScaledVector(dir, -INTERSECTION_SIZE * 0.5);
+    const length = Math.max(0.1, trimmedA.distanceTo(trimmedB));
+    const mid = trimmedA.clone().lerp(trimmedB, 0.5);
     const roadTex = tex.clone();
     roadTex.needsUpdate = true;
     roadTex.repeat.set(1, Math.max(1, Math.round(length / 8)));
     const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(ROAD_WIDTH, 0.22, length),
+      new THREE.BoxGeometry(ROAD_WIDTH, ROAD_HEIGHT, length),
       new THREE.MeshStandardMaterial({ color: 0xffffff, map: roadTex, roughness: 0.9, metalness: 0 }),
     ) as TargetedMesh;
     mesh.position.copy(mid);
-    mesh.position.y = 0.06;
+    mesh.position.y = ROAD_Y;
     mesh.rotation.y = Math.atan2(pb.x - pa.x, pb.z - pa.z);
+    this.roadMarkingMeshes.set(e.id, this.addRoadMarkings(mesh, length));
     mesh.userData.pick = { kind: 'road', id: e.id };
     this.worldRoot.add(mesh);
     this.pickables.push(mesh);
     this.roadMeshes.set(e.id, mesh);
+  }
+
+  private addIntersections(): void {
+    for (const n of this.district.nodes) {
+      const intersectionTex = makeIntersectionTexture();
+      const cap = new THREE.Mesh(
+        new THREE.BoxGeometry(INTERSECTION_SIZE, ROAD_HEIGHT, INTERSECTION_SIZE),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, map: intersectionTex, roughness: 0.9, metalness: 0 }),
+      );
+      cap.position.copy(planToWorld(n));
+      cap.position.y = ROAD_Y;
+      this.addIntersectionMarkings(cap, this.roadDirsForNode(n));
+      this.worldRoot.add(cap);
+      this.intersectionMeshes.push(cap);
+    }
+  }
+
+  private addRoadMarkings(road: THREE.Mesh, length: number): THREE.Mesh[] {
+    const markings: THREE.Mesh[] = [];
+    const edgeGeo = new THREE.BoxGeometry(ROAD_EDGE_LINE_WIDTH, MARKING_HEIGHT, length);
+    const left = new THREE.Mesh(edgeGeo, this.whiteLineMaterial.clone());
+    left.position.set(-ROAD_EDGE_LINE_CENTER, MARKING_Y, 0);
+    left.userData.marking = 'edge';
+    const right = new THREE.Mesh(edgeGeo.clone(), this.whiteLineMaterial.clone());
+    right.position.set(ROAD_EDGE_LINE_CENTER, MARKING_Y, 0);
+    right.userData.marking = 'edge';
+    road.add(left, right);
+    markings.push(left, right);
+
+    const dashLength = 0.95;
+    const dashGap = 0.85;
+    const step = dashLength + dashGap;
+    for (let z = -length / 2 + dashLength / 2; z < length / 2; z += step) {
+      const dash = new THREE.Mesh(
+        new THREE.BoxGeometry(ROAD_CENTER_LINE_WIDTH, MARKING_HEIGHT, Math.min(dashLength, length / 2 - z + dashLength / 2)),
+        this.yellowLineMaterial.clone(),
+      );
+      dash.position.set(0, MARKING_Y + 0.001, z);
+      dash.userData.marking = 'center';
+      road.add(dash);
+      markings.push(dash);
+    }
+    return markings;
+  }
+
+  private addIntersectionMarkings(cap: THREE.Mesh, dirs: Set<RoadDir>): void {
+    const has = (dir: RoadDir) => dirs.has(dir);
+    const count = dirs.size;
+    if (count === 4) {
+      this.addCornerMark(cap, -1, -1);
+      this.addCornerMark(cap, 1, -1);
+      this.addCornerMark(cap, -1, 1);
+      this.addCornerMark(cap, 1, 1);
+      return;
+    }
+
+    if (count === 3) {
+      if (!has('n')) {
+        this.addHorizontalMark(cap, -ROAD_EDGE_LINE_CENTER, -ROAD_WIDTH / 2, ROAD_WIDTH);
+        this.addCornerMark(cap, -1, 1);
+        this.addCornerMark(cap, 1, 1);
+      } else if (!has('s')) {
+        this.addHorizontalMark(cap, ROAD_EDGE_LINE_CENTER, -ROAD_WIDTH / 2, ROAD_WIDTH);
+        this.addCornerMark(cap, -1, -1);
+        this.addCornerMark(cap, 1, -1);
+      } else if (!has('w')) {
+        this.addVerticalMark(cap, -ROAD_EDGE_LINE_CENTER, -ROAD_WIDTH / 2, ROAD_WIDTH);
+        this.addCornerMark(cap, 1, -1);
+        this.addCornerMark(cap, 1, 1);
+      } else if (!has('e')) {
+        this.addVerticalMark(cap, ROAD_EDGE_LINE_CENTER, -ROAD_WIDTH / 2, ROAD_WIDTH);
+        this.addCornerMark(cap, -1, -1);
+        this.addCornerMark(cap, -1, 1);
+      }
+      return;
+    }
+
+    if (count === 2) {
+      if (has('n') && has('e')) {
+        this.addOuterCornerMark(cap, -1, 1);
+        this.addCornerMark(cap, 1, -1);
+      } else if (has('e') && has('s')) {
+        this.addOuterCornerMark(cap, -1, -1);
+        this.addCornerMark(cap, 1, 1);
+      } else if (has('s') && has('w')) {
+        this.addOuterCornerMark(cap, 1, -1);
+        this.addCornerMark(cap, -1, 1);
+      } else if (has('w') && has('n')) {
+        this.addOuterCornerMark(cap, 1, 1);
+        this.addCornerMark(cap, -1, -1);
+      }
+    }
+  }
+
+  private addCornerMark(cap: THREE.Mesh, sx: -1 | 1, sz: -1 | 1): void {
+    const edge = ROAD_WIDTH / 2;
+    const c = ROAD_EDGE_LINE_CENTER;
+    this.addLMark(cap, sx * c, sz * c, sx * edge, sz * edge);
+  }
+
+  private addOuterCornerMark(cap: THREE.Mesh, sx: -1 | 1, sz: -1 | 1): void {
+    const edge = ROAD_WIDTH / 2;
+    const c = ROAD_EDGE_LINE_CENTER;
+    this.addLMark(cap, sx * c, sz * c, -sx * edge, -sz * edge);
+  }
+
+  private addLMark(cap: THREE.Mesh, elbowX: number, elbowZ: number, endX: number, endZ: number): void {
+    const half = ROAD_EDGE_LINE_WIDTH / 2;
+    const xStart = Math.min(elbowX - half, endX);
+    const xEnd = Math.max(elbowX + half, endX);
+    const zStart = Math.min(elbowZ - half, endZ);
+    const zEnd = Math.max(elbowZ + half, endZ);
+    this.addHorizontalMark(cap, elbowZ, xStart, xEnd - xStart);
+    this.addVerticalMark(cap, elbowX, zStart, zEnd - zStart);
+  }
+
+  private addHorizontalMark(cap: THREE.Mesh, z: number, xStart: number, length: number): void {
+    if (length <= 0) return;
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(length, MARKING_HEIGHT, ROAD_EDGE_LINE_WIDTH), this.whiteLineMaterial);
+    mark.position.set(xStart + length / 2, MARKING_Y, z);
+    cap.add(mark);
+  }
+
+  private addVerticalMark(cap: THREE.Mesh, x: number, zStart: number, length: number): void {
+    if (length <= 0) return;
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(ROAD_EDGE_LINE_WIDTH, MARKING_HEIGHT, length), this.whiteLineMaterial);
+    mark.position.set(x, MARKING_Y, zStart + length / 2);
+    cap.add(mark);
+  }
+
+  private roadDirsForNode(n: NodeDef): Set<RoadDir> {
+    const dirs = new Set<RoadDir>();
+    for (const e of this.district.edges) {
+      const otherId = e.a === n.id ? e.b : e.b === n.id ? e.a : null;
+      if (!otherId) continue;
+      const other = this.nodeById.get(otherId);
+      if (!other) continue;
+      if (other.x < n.x) dirs.add('w');
+      else if (other.x > n.x) dirs.add('e');
+      else if (other.y < n.y) dirs.add('n');
+      else if (other.y > n.y) dirs.add('s');
+    }
+    return dirs;
   }
 
   /** Procedural instrument mast — no kit model reads as a sensor tower. */
@@ -407,7 +595,7 @@ class DistrictRenderApp implements RenderApp {
     const n = this.nodeById.get(b.node)!;
     const base = planToWorld(n);
     const hash = [...b.id].reduce((s, c) => s + c.charCodeAt(0), 0);
-    const angle = (hash % 8) * (Math.PI / 4);
+    const angle = (hash % 4) * (Math.PI / 2) + Math.PI / 4;
     return base.add(new THREE.Vector3(Math.cos(angle) * BUILDING_SPACING, 0, Math.sin(angle) * BUILDING_SPACING));
   }
 
@@ -658,18 +846,26 @@ class DistrictRenderApp implements RenderApp {
     this.camera.rotation.order = 'YXZ';
     this.camera.rotation.y = this.yaw;
     this.camera.rotation.x = this.pitch;
-    if (!this.isLocked()) return;
-    const speed = (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 38 : 24) * dt;
+    if (!this.isLocked()) {
+      this.walkVelocity.multiplyScalar(Math.exp(-12 * dt));
+      this.sky.position.copy(this.camera.position);
+      return;
+    }
+    const topSpeed = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 38 : 24;
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    if (this.keys.has('KeyW')) this.camera.position.addScaledVector(forward, speed);
-    if (this.keys.has('KeyS')) this.camera.position.addScaledVector(forward, -speed);
-    if (this.keys.has('KeyD')) this.camera.position.addScaledVector(right, speed);
-    if (this.keys.has('KeyA')) this.camera.position.addScaledVector(right, -speed);
-    if (this.keys.has('Space')) this.camera.position.y += speed;
-    if (this.keys.has('KeyQ')) this.camera.position.y -= speed;
-    if (this.keys.has('KeyE')) this.camera.position.y += speed;
-    this.camera.position.y = THREE.MathUtils.clamp(this.camera.position.y, 5, 70);
+    const desired = new THREE.Vector3();
+    if (this.keys.has('KeyW')) desired.add(forward);
+    if (this.keys.has('KeyS')) desired.addScaledVector(forward, -1);
+    if (this.keys.has('KeyD')) desired.add(right);
+    if (this.keys.has('KeyA')) desired.addScaledVector(right, -1);
+    if (desired.lengthSq() > 1) desired.normalize();
+    desired.multiplyScalar(topSpeed);
+    desired.y = 0;
+    const smoothing = 1 - Math.exp(-10 * dt);
+    this.walkVelocity.lerp(desired, smoothing);
+    this.camera.position.addScaledVector(this.walkVelocity, dt);
+    this.camera.position.y = EYE_HEIGHT;
     this.camera.position.x = THREE.MathUtils.clamp(this.camera.position.x, -170, 170);
     this.camera.position.z = THREE.MathUtils.clamp(this.camera.position.z, -120, 130);
     this.sky.position.copy(this.camera.position);
@@ -732,7 +928,11 @@ class DistrictRenderApp implements RenderApp {
 
   private applyHighlights(): void {
     const selected = this.highlight ?? this.pick;
-    for (const [id, mesh] of this.roadMeshes) this.setEmissive(mesh, equalTarget(selected, { kind: 'road', id }) ? 0x4a6a2c : this.mode === 'sandbox' ? 0x0a4a5a : 0);
+    for (const [id, mesh] of this.roadMeshes) {
+      const on = equalTarget(selected, { kind: 'road', id });
+      this.setEmissive(mesh, on ? 0x4a6a2c : this.mode === 'sandbox' ? 0x0a4a5a : 0);
+      this.setRoadMarkingHighlight(id, on);
+    }
     for (const [id, obj] of this.buildingMeshes) {
       const on = equalTarget(selected, { kind: 'building', id });
       obj.traverse((child) => this.setEmissive(child, on ? 0x3a5226 : this.mode === 'sandbox' ? 0x0a4a5a : 0));
@@ -743,6 +943,19 @@ class DistrictRenderApp implements RenderApp {
     const mat = (obj as THREE.Mesh).material;
     if (mat instanceof THREE.MeshStandardMaterial) mat.emissive.setHex(hex);
     else if (Array.isArray(mat)) for (const m of mat) if (m instanceof THREE.MeshStandardMaterial) m.emissive.setHex(hex);
+  }
+
+  private setRoadMarkingHighlight(id: string, on: boolean): void {
+    for (const mesh of this.roadMarkingMeshes.get(id) ?? []) {
+      const mat = mesh.material;
+      if (!(mat instanceof THREE.MeshBasicMaterial)) continue;
+      const base = mesh.userData.marking === 'center' ? ROAD_CENTER_LINE_COLOR : ROAD_EDGE_LINE_COLOR;
+      mat.color.setHex(on ? this.overlayColor(base, ROAD_HIGHLIGHT_OVERLAY_COLOR, ROAD_HIGHLIGHT_OVERLAY_ALPHA) : base);
+    }
+  }
+
+  private overlayColor(baseHex: number, overlayHex: number, alpha: number): number {
+    return new THREE.Color(baseHex).lerp(new THREE.Color(overlayHex), alpha).getHex();
   }
 
   private readonly resize = (): void => {

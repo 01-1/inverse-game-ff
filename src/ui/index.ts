@@ -47,6 +47,12 @@ function formatLast(s: SeriesSpec): string {
   return s.format ? s.format(last) : last.toFixed(1);
 }
 
+const SERIES_COLORS = ['#f7c85b', '#7bd8d0', '#ef7d70', '#b6d77a', '#d8c7ff'];
+
+function seriesColor(index: number): string {
+  return SERIES_COLORS[index % SERIES_COLORS.length]!;
+}
+
 function drawSeries(canvas: HTMLCanvasElement, specs: SeriesSpec[]): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
@@ -72,12 +78,11 @@ function drawSeries(canvas: HTMLCanvasElement, specs: SeriesSpec[]): void {
     ctx.lineTo(w, yy);
     ctx.stroke();
   }
-  const colors = ['#f7c85b', '#7bd8d0', '#ef7d70', '#b6d77a', '#d8c7ff'];
   specs.forEach((s, idx) => {
     const draw = (data: number[], dashed: boolean): void => {
       if (data.length < 2) return;
       ctx.setLineDash(dashed ? [5, 4] : []);
-      ctx.strokeStyle = dashed ? 'rgba(255,255,255,.45)' : colors[idx % colors.length]!;
+      ctx.strokeStyle = dashed ? 'rgba(255,255,255,.45)' : seriesColor(idx);
       ctx.lineWidth = dashed ? 1.3 : 2;
       ctx.beginPath();
       data.forEach((v, i) => {
@@ -111,7 +116,14 @@ function renderInspect(container: HTMLElement, data: InspectData, onPin?: (e: Jo
     if (section.text) block.append(el('p', undefined, section.text));
     if (section.series) {
       const legend = el('div', 'legend');
-      for (const s of section.series) legend.append(el('span', undefined, `${s.label}: ${formatLast(s)}`));
+      section.series.forEach((s, idx) => {
+        const row = el('div', 'legend-row');
+        row.style.borderLeftColor = seriesColor(idx);
+        const swatch = el('span', 'legend-swatch');
+        swatch.style.background = seriesColor(idx);
+        row.append(swatch, el('span', 'legend-label', `${s.label}: ${formatLast(s)}`));
+        legend.append(row);
+      });
       const c = el('canvas', 'spark');
       block.append(legend, c);
       requestAnimationFrame(() => drawSeries(c, section.series ?? []));
@@ -141,24 +153,24 @@ export function createIntro(root: HTMLElement, opts: IntroOptions): IntroScreen 
 export function createHud(root: HTMLElement, opts: HudOptions): Hud {
   const node = el('div', 'hud');
   node.hidden = true;
-  const mode = el('span', 'pill');
-  const day = el('span', 'pill');
+  const location = el('span', 'pill');
   const budget = el('span', 'pill');
   const attempts = el('span', 'pill');
   const target = el('div', 'target');
   const hint = el('div', 'hint');
-  const controls = el('div', 'hud-row');
-  controls.append(button('Journal', opts.onJournal, 'btn small'), button('Sandbox', opts.onSandbox, 'btn small'));
-  node.append(el('div', 'hud-row'), target, hint, controls);
-  node.firstElementChild?.append(mode, day, budget, attempts);
+  const status = el('div', 'hud-row status-row');
+  target.hidden = true;
+  location.textContent = opts.locationName;
+  node.append(status, hint, target);
+  node.firstElementChild?.append(location, budget, attempts);
   root.append(node);
   return {
     show: () => (node.hidden = false),
     hide: () => (node.hidden = true),
-    setMode: (m) => (mode.textContent = m === 'sandbox' ? 'SANDBOX' : 'WORLD'),
-    setDay: (t) => (day.textContent = t),
-    setBudget: (n) => (budget.textContent = `Compute ${n}`),
-    setAttempts: (n) => (attempts.textContent = `Attempts ${n}`),
+    setMode: () => undefined,
+    setDay: () => undefined,
+    setBudget: (n) => (budget.textContent = `Compute: ${n}`),
+    setAttempts: (n) => (attempts.textContent = `Attempts: ${n}`),
     setTargetName: (name) => {
       target.textContent = name ? `Inspect: ${name}` : '';
       target.hidden = !name;
@@ -169,9 +181,14 @@ export function createHud(root: HTMLElement, opts: HudOptions): Hud {
 
 export function createInspectPanel(root: HTMLElement, opts: InspectPanelOptions): InspectPanel {
   const node = overlay('side-panel');
-  const close = button('Close', opts.onClose, 'btn small');
+  const panel = el('div', 'panel-shell');
   const body = el('div', 'scroll-body');
-  node.append(close, body);
+  const close = button('Close', opts.onClose);
+  node.addEventListener('mousedown', (e) => {
+    if (e.target === node) opts.onClose();
+  });
+  panel.append(body, close);
+  node.append(panel);
   root.append(node);
   return {
     show: (data: InspectData) => {
@@ -186,7 +203,9 @@ export function createInspectPanel(root: HTMLElement, opts: InspectPanelOptions)
 export function createJournal(root: HTMLElement, opts: JournalOptions): Journal {
   const entries: JournalEntry[] = [];
   const node = overlay('side-panel journal');
+  const panel = el('div', 'panel-shell');
   const body = el('div', 'scroll-body');
+  const close = button('Close', opts.onClose);
   const repaint = (): void => {
     body.replaceChildren(el('h2', undefined, 'Journal'));
     if (entries.length === 0) body.append(el('p', 'subtle', 'No pinned observations yet.'));
@@ -199,7 +218,11 @@ export function createJournal(root: HTMLElement, opts: JournalOptions): Journal 
       body.append(card);
     }
   };
-  node.append(button('Close', opts.onClose, 'btn small'), body);
+  node.addEventListener('mousedown', (e) => {
+    if (e.target === node) opts.onClose();
+  });
+  panel.append(body, close);
+  node.append(panel);
   root.append(node);
   return {
     add: (entry) => {
@@ -217,6 +240,7 @@ export function createJournal(root: HTMLElement, opts: JournalOptions): Journal 
 
 export function createSandboxPanel(root: HTMLElement, opts: SandboxPanelOptions): SandboxPanel {
   const node = overlay('sandbox-panel');
+  const panel = el('div', 'panel-shell');
   const body = el('div', 'scroll-body');
   let selectedRoad: string | null = null;
   let lastState: SandboxPanelState | null = null;
@@ -235,7 +259,11 @@ export function createSandboxPanel(root: HTMLElement, opts: SandboxPanelOptions)
     body.append(el('label', undefined, 'Schedule event'), sites, eventType, button(`Run scheduled event (${lastState.costs.scheduleEvent})`, () => opts.onRun({ kind: 'scheduleEvent', type: eventType.value as 'gridMaintenance' | 'festival', site: sites.value }), 'btn'));
     body.append(button('Run selected road closure', () => opts.onRun({ kind: 'closeRoad' }), 'btn primary'), button('Exit sandbox', opts.onExit, 'btn'));
   };
-  node.append(body);
+  node.addEventListener('mousedown', (e) => {
+    if (e.target === node) opts.onExit();
+  });
+  panel.append(body);
+  node.append(panel);
   root.append(node);
   return {
     open: (state) => {
