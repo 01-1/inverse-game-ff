@@ -23,6 +23,16 @@ export type CommitResult =
   | { outcome: 'miss'; building: string; attemptsLeft: number }
   | { outcome: 'lose'; building: string };
 
+export class InvalidInterventionError extends Error {
+  readonly intervention: Intervention;
+
+  constructor(message: string, intervention: Intervention) {
+    super(message);
+    this.name = 'InvalidInterventionError';
+    this.intervention = intervention;
+  }
+}
+
 export class Sandbox {
   readonly caseDef: CaseDef;
   private readonly endSnapshot: SimSnapshot;
@@ -69,10 +79,12 @@ export class Sandbox {
   }
 
   /**
-   * Run one probe. Deducts budget; throws if unaffordable or case resolved.
+   * Run one probe. Validates before charging budget; throws if invalid,
+   * unaffordable, or case resolved.
    */
   runProbe(iv: Intervention): ProbeResult {
     if (this._resolved) throw new Error('Case already resolved');
+    this.validateIntervention(iv);
     const cost = this.probeCost(iv.kind);
     if (this._budget < cost) throw new Error('Insufficient compute budget');
     this._budget -= cost;
@@ -90,6 +102,38 @@ export class Sandbox {
     };
     this.probes.push(result);
     return result;
+  }
+
+  private validateIntervention(iv: Intervention): void {
+    switch (iv.kind) {
+      case 'closeRoad':
+        if (!this.caseDef.district.edges.some((e) => e.id === iv.edge)) {
+          throw new InvalidInterventionError(`Unknown road: ${iv.edge}`, iv);
+        }
+        if (!Number.isFinite(iv.days) || iv.days <= 0) {
+          throw new InvalidInterventionError('Road closure must last at least one day', iv);
+        }
+        break;
+      case 'priceSpike':
+        if (!this.caseDef.district.goods.some((g) => g.id === iv.good)) {
+          throw new InvalidInterventionError(`Unknown good: ${iv.good}`, iv);
+        }
+        if (!Number.isFinite(iv.magnitude) || iv.magnitude <= 0) {
+          throw new InvalidInterventionError('Price spike magnitude must be positive', iv);
+        }
+        if (!Number.isFinite(iv.days) || iv.days <= 0) {
+          throw new InvalidInterventionError('Price spike must last at least one day', iv);
+        }
+        break;
+      case 'scheduleEvent':
+        if (!this.caseDef.district.buildings.some((b) => b.id === iv.site)) {
+          throw new InvalidInterventionError(`Unknown event site: ${iv.site}`, iv);
+        }
+        if (!Number.isFinite(iv.inDays) || iv.inDays < 0) {
+          throw new InvalidInterventionError('Scheduled event offset must be non-negative', iv);
+        }
+        break;
+    }
   }
 
   /** Commit to a building as the artifact location. Binary, limited attempts. */

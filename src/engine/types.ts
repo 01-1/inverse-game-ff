@@ -170,6 +170,8 @@ export interface DeliveryRecord {
   to: string; // building id (shop/warehouse)
   /** Edge ids of the route driven. */
   route: string[];
+  /** False when a requested manifest could not be delivered because no route existed. */
+  delivered: boolean;
   /** Why the policy ordered it (legible rules engine). */
   reason: 'restock' | 'reserveRelease' | 'dipBuy' | 'surge';
 }

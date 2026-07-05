@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CASE_01 } from '../src/cases/case01';
-import { Sandbox, Simulation, runHistory } from '../src/engine';
+import { InvalidInterventionError, RoadGraph, Sandbox, Simulation, runHistory } from '../src/engine';
 import type { DayRecord, Intervention } from '../src/engine';
 
 function endSandbox(): Sandbox {
@@ -41,6 +41,18 @@ describe('sandbox probes', () => {
     expect(result.baseline).toEqual(endSandbox().baseline());
   });
 
+  it('rejects invalid probes before charging compute budget', () => {
+    const sandbox = endSandbox();
+    const budget = sandbox.budget;
+
+    expect(() => sandbox.runProbe({ kind: 'priceSpike', good: 'unobtainium', magnitude: 1.6, days: 4 })).toThrow(
+      InvalidInterventionError,
+    );
+    expect(() => sandbox.runProbe({ kind: 'closeRoad', edge: 'missing-road', days: 2 })).toThrow(InvalidInterventionError);
+    expect(sandbox.budget).toBe(budget);
+    expect(sandbox.probes).toHaveLength(0);
+  });
+
   it('close-road probes expose signal protection around the depot to Warehouse 7 corridor', () => {
     const sandbox = endSandbox();
     const result = sandbox.runProbe({ kind: 'closeRoad', edge: 'h22', days: CASE_01.probeDays });
@@ -67,6 +79,26 @@ describe('sandbox probes', () => {
 
     expect(sumDeliveries(result.probe, 'W7', 'fuel')).toBeGreaterThan(sumDeliveries(result.baseline, 'W7', 'fuel') + 70);
     expect(result.probe.some((r) => r.events.some((e) => e.injected && e.type === 'gridMaintenance'))).toBe(true);
+  });
+
+  it('records failed manifests without transferring stock when a destination has no route', () => {
+    const history = runHistory(CASE_01, CASE_01.trueObjective);
+    const sim = new Simulation(CASE_01, CASE_01.trueObjective, history.snapshot());
+    const graph = new RoadGraph(CASE_01.district);
+    const w7Node = CASE_01.district.buildings.find((b) => b.id === 'W7')?.node;
+    expect(w7Node).toBe('n52');
+    const incident = graph.incident.get(w7Node!)?.map((e) => e.id) ?? [];
+    for (const edge of incident) sim.applyIntervention({ kind: 'closeRoad', edge, days: CASE_01.probeDays });
+
+    const before = history.snapshot().warehouseStock.W7?.fuel ?? 0;
+    sim.applyIntervention({ kind: 'scheduleEvent', type: 'gridMaintenance', site: 'annex', inDays: 1 });
+    const records = sim.runDays(CASE_01.probeDays);
+    const after = records[records.length - 1]?.warehouseStock.W7?.fuel ?? 0;
+    const failed = records.flatMap((r) => r.deliveries).filter((d) => d.to === 'W7' && d.good === 'fuel' && !d.delivered);
+
+    expect(after).toBe(before);
+    expect(failed.length).toBeGreaterThan(0);
+    expect(failed.every((d) => d.route.length === 0)).toBe(true);
   });
 });
 

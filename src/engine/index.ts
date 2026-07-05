@@ -9,4 +9,4 @@ export {
   meanConsumerPrice,
   type SimSnapshot,
 } from './sim';
-export { Sandbox, type ProbeResult, type CommitResult } from './sandbox';
+export { Sandbox, InvalidInterventionError, type ProbeResult, type CommitResult } from './sandbox';

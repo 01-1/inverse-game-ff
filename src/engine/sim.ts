@@ -305,9 +305,6 @@ export class Simulation {
     const deliveries: DeliveryRecord[] = [];
     const depot = this.depot();
 
-    const routeBetween = (fromB: BuildingDef, toB: BuildingDef): string[] =>
-      this.graph.shortestPath(fromB.node, toB.node, closed) ?? [];
-
     const deliver = (
       from: BuildingDef,
       to: BuildingDef,
@@ -316,7 +313,10 @@ export class Simulation {
       reason: DeliveryRecord['reason'],
     ): void => {
       if (amount <= 0.5) return;
-      deliveries.push({ day: d, good, amount: Math.round(amount), from: from.id, to: to.id, route: routeBetween(from, to), reason });
+      const route = this.graph.shortestPath(from.node, to.node, closed);
+      const delivered = route !== null;
+      deliveries.push({ day: d, good, amount: Math.round(amount), from: from.id, to: to.id, route: route ?? [], delivered, reason });
+      if (!delivered) return;
       if (from.kind === 'warehouse') this.addStock(this.state.warehouseStock, from.id, good, -amount);
       if (to.kind === 'warehouse') this.addStock(this.state.warehouseStock, to.id, good, amount);
       if (to.kind === 'shop') this.addStock(this.state.shopStock, to.id, good, amount);
