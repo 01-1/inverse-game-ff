@@ -24,8 +24,6 @@ npm test
 
 - `WASD` move
 - Mouse look with pointer lock
-- `Space` or `E` move up
-- `Q` move down
 - Left click or `F` inspect the road/building under the reticle
 - `Tab` journal
 - `B` sandbox
