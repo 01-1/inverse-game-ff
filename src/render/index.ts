@@ -690,15 +690,18 @@ class DistrictRenderApp implements RenderApp {
   }
 
   private async dressPlaza(b: BuildingDef): Promise<void> {
-    const group = new THREE.Group();
+    const group = new THREE.Group() as Targeted;
     const center = this.placementFor(b);
     const pad = new THREE.Mesh(
       new THREE.CircleGeometry(9, 24),
       new THREE.MeshStandardMaterial({ color: 0x7f8a76, roughness: 0.95 }),
-    );
+    ) as TargetedMesh;
     pad.rotation.x = -Math.PI / 2;
     pad.position.y = 0.05;
+    pad.userData.pick = { kind: 'building', id: b.id };
+    group.userData.pick = { kind: 'building', id: b.id };
     group.add(pad);
+    this.pickables.push(pad);
     const rng = mulberry32(hashSeed(`plaza|${b.id}`));
     for (let i = 0; i < 10; i++) {
       const file = DRESSING_MODELS[Math.floor(rng() * DRESSING_MODELS.length)]!;
