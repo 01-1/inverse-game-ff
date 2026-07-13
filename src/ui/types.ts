@@ -120,6 +120,10 @@ export interface SandboxPanel {
   open(state: SandboxPanelState): void;
   close(): void;
   isOpen(): boolean;
+  /** Temporarily remove modal/inert state while the player aims at the world. */
+  suspendForRoadPick(): void;
+  /** Restore the configured modal after a road pick succeeds or is cancelled. */
+  resumeAfterRoadPick(): void;
   /** Fed by the game while the player aims at a road in pick mode. */
   setSelectedRoad(name: string | null): void;
   /** Replace panel content with a probe result view. */

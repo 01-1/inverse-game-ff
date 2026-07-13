@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CASE_01 } from '../src/cases/case01';
 import { InvalidInterventionError, RoadGraph, Sandbox, Simulation, runHistory } from '../src/engine';
 import type { DayRecord, Intervention } from '../src/engine';
+import type { CaseDef } from '../src/engine/types';
 
 function endSandbox(): Sandbox {
   const history = runHistory(CASE_01, CASE_01.trueObjective);
@@ -99,6 +100,75 @@ describe('sandbox probes', () => {
     expect(after).toBe(before);
     expect(failed.length).toBeGreaterThan(0);
     expect(failed.every((d) => d.route.length === 0)).toBe(true);
+  });
+
+  it('does not discount consumer prices for reserve units that never reach a shop', () => {
+    const objective = {
+      id: 'price-only',
+      label: 'Price stability',
+      terms: [{ kind: 'priceStability' as const, weight: 1, goods: ['good'] }],
+    };
+    const isolatedCase: CaseDef = {
+      id: 'isolated-reserve',
+      title: 'Isolated reserve',
+      seed: 1,
+      historyDays: 1,
+      probeDays: 1,
+      district: {
+        name: 'Two nodes',
+        nodes: [
+          { id: 'a', x: 0, y: 0 },
+          { id: 'b', x: 1, y: 0 },
+        ],
+        edges: [{ id: 'only-road', a: 'a', b: 'b', capacity: 100, baseDemand: 0, name: 'Only road' }],
+        buildings: [
+          { id: 'depot', kind: 'depot', name: 'Depot', node: 'a', goods: ['good'] },
+          { id: 'reserve', kind: 'warehouse', name: 'Reserve', node: 'a', initialStock: { good: 100 } },
+          { id: 'shop', kind: 'shop', name: 'Shop', node: 'b', goods: ['good'] },
+        ],
+        goods: [{ id: 'good', name: 'Good', basePrice: 1, dailyDemand: 100, volatility: 0 }],
+      },
+      statedObjective: objective,
+      trueObjective: objective,
+      calendar: [],
+      artifact: { building: 'reserve', name: 'Reserve', reveal: 'Test' },
+      computeBudget: 1,
+      probeCosts: { closeRoad: 1, priceSpike: 1, scheduleEvent: 1 },
+      commitAttempts: 1,
+      intro: { premise: 'Test', statedObjectiveText: 'Test', briefing: [] },
+      loseText: 'Test',
+    };
+    const sim = new Simulation(isolatedCase, objective);
+    sim.applyIntervention({ kind: 'closeRoad', edge: 'only-road', days: 1 });
+    sim.applyIntervention({ kind: 'priceSpike', good: 'good', magnitude: 2, days: 1 });
+
+    const record = sim.step();
+    const failedRelease = record.deliveries.find((delivery) => delivery.reason === 'reserveRelease');
+    expect(failedRelease).toMatchObject({ delivered: false, amount: 70, route: [] });
+    expect(record.consumer.good).toBe(2.5);
+    expect(record.warehouseStock.reserve?.good).toBe(100);
+
+    const partialCase = structuredClone(isolatedCase);
+    partialCase.id = 'partial-reserve';
+    partialCase.district.nodes.push({ id: 'c', x: 0, y: 1 });
+    partialCase.district.edges.push({
+      id: 'open-road',
+      a: 'a',
+      b: 'c',
+      capacity: 100,
+      baseDemand: 0,
+      name: 'Open road',
+    });
+    partialCase.district.buildings.push({ id: 'shop-2', kind: 'shop', name: 'Second shop', node: 'c', goods: ['good'] });
+    const partial = new Simulation(partialCase, objective);
+    partial.applyIntervention({ kind: 'closeRoad', edge: 'only-road', days: 1 });
+    partial.applyIntervention({ kind: 'priceSpike', good: 'good', magnitude: 2, days: 1 });
+
+    const partialRecord = partial.step();
+    const releases = partialRecord.deliveries.filter((delivery) => delivery.reason === 'reserveRelease');
+    expect(releases.map((delivery) => delivery.delivered).sort()).toEqual([false, true]);
+    expect(partialRecord.consumer.good).toBe(2.0625);
+    expect(partialRecord.warehouseStock.reserve?.good).toBe(65);
   });
 });
 

@@ -10,6 +10,7 @@
 
 import type { BuildingDef, CaseDef, DayRecord, EdgeDef, Intervention } from './engine/types';
 import { Sandbox, Simulation, runHistory, type ProbeResult } from './engine';
+import { globalShortcutAction, type ActiveUi } from './input-policy';
 import { createRenderApp } from './render';
 import {
   createConfirm,
@@ -39,7 +40,7 @@ const EVENT_LEAD_DAYS = 6;
 const CONTROLS_HELP = [
   'WASD: move | mouse: look | Shift: move faster',
   'Left click or F: inspect what you are looking at',
-  'Tab: journal | B: sandbox | G: commit to a building',
+  'J: journal | B: sandbox | G: commit to a building',
   'Esc: keybinds / pause',
   'Esc in a panel: close and return to mouse-look',
   'Click outside a panel: close it',
@@ -104,10 +105,7 @@ export class Game {
     });
     this.endScreen = createEndgame(root, { onRestart: () => window.location.reload() });
     this.menu = createPauseMenu(root, {
-      onResume: () => {
-        this.menu.hide();
-        this.render.lock();
-      },
+      onResume: () => this.resumeFromMenu(),
       onRestart: () => this.confirmRestart(),
       controlsHelp: CONTROLS_HELP,
     });
@@ -125,7 +123,7 @@ export class Game {
     this.render.start();
     this.render.setDayData(this.lastHistoryDay());
     this.render.onProgress((loaded, total) => this.onLoadProgress(loaded, total));
-    if (this.render.isReady()) this.hideLoadingScreen();
+    if (this.render.isReady()) this.finishLoading();
   }
 
   private readonly loadingScreen: {
@@ -165,15 +163,17 @@ export class Game {
     this.loadingScreen.bar.style.width = `${Math.max(8, pct)}%`;
     this.loadingScreen.label.textContent = total > 0 ? `Loading district assets… ${pct}%` : 'Loading district assets…';
     if (this.render.isReady() && !this.assetsReady) {
-      this.assetsReady = true;
-      this.hideLoadingScreen();
+      this.finishLoading();
     }
   }
 
-  private hideLoadingScreen(): void {
+  private finishLoading(): void {
+    if (this.assetsReady) return;
+    this.assetsReady = true;
     const { node, bar, label } = this.loadingScreen;
     bar.style.width = '100%';
-    label.textContent = 'Ready';
+    const warnings = this.render.getAssetWarningCount();
+    label.textContent = warnings > 0 ? `Ready with simplified graphics (${warnings} asset warnings)` : 'Ready';
     node.style.transition = 'opacity .4s ease';
     node.style.opacity = '0';
     node.style.pointerEvents = 'none';
@@ -216,6 +216,15 @@ export class Game {
     );
   }
 
+  private activeUi(): ActiveUi {
+    if (this.confirm.isOpen()) return 'confirm';
+    if (this.menu.isOpen()) return 'menu';
+    if (this.sandboxPanel.isOpen()) return 'sandbox';
+    if (this.inspect.isOpen()) return 'inspect';
+    if (this.journal.isOpen()) return 'journal';
+    return 'none';
+  }
+
   private closePanelsAndRelock(): void {
     this.inspect.hide();
     this.journal.hide();
@@ -243,9 +252,6 @@ export class Game {
   private wireInput(): void {
     this.render.onPickChange((t) => {
       this.hud.setTargetName(this.targetName(t));
-      if (this.pickingRoad) {
-        this.sandboxPanel.setSelectedRoad(t?.kind === 'road' ? this.roadName(t.id) : null);
-      }
     });
 
     this.render.onLockChange((locked) => {
@@ -260,38 +266,47 @@ export class Game {
     });
 
     window.addEventListener('keydown', (e) => {
+      if (e.defaultPrevented) return;
       if (this.state === 'intro' || this.state === 'ended') return;
-      if (e.code === 'Tab') {
-        e.preventDefault();
-        if (this.state === 'playing') this.toggleJournal();
-        return;
-      }
       if (this.state !== 'playing') return;
-      switch (e.code) {
-        case 'KeyF':
-          if (this.render.isLocked()) this.inspectTarget();
+      const action = globalShortcutAction(e.code, {
+        playing: this.state === 'playing',
+        mode: this.mode,
+        activeUi: this.activeUi(),
+        pointerLocked: this.render.isLocked(),
+        pickingRoad: this.pickingRoad,
+      });
+      switch (action) {
+        case 'toggleJournal':
+          e.preventDefault();
+          this.toggleJournal();
           break;
-        case 'KeyB':
+        case 'inspect':
+          this.inspectTarget();
+          break;
+        case 'openSandbox':
+          e.preventDefault();
           this.toggleSandbox();
           break;
-        case 'KeyG':
-          if (this.render.isLocked() && this.mode === 'world') this.tryCommit();
+        case 'commit':
+          this.tryCommit();
           break;
-        case 'Escape':
-          if (this.pickingRoad) {
-            this.cancelRoadPick();
-            return;
-          }
-          if (this.inspect.isOpen() || this.journal.isOpen() || this.sandboxPanel.isOpen()) {
-            e.preventDefault();
-            this.dismissPanelOnEscapeUp = true;
-            return;
-          }
-          if (!this.menu.isOpen()) {
-            e.preventDefault();
-            this.render.unlock();
-            this.menu.show();
-          }
+        case 'cancelRoadPick':
+          e.preventDefault();
+          this.cancelRoadPick();
+          break;
+        case 'dismissPanel':
+          e.preventDefault();
+          this.dismissPanelOnEscapeUp = true;
+          break;
+        case 'resume':
+          e.preventDefault();
+          this.resumeFromMenu();
+          break;
+        case 'pause':
+          e.preventDefault();
+          this.render.unlock();
+          this.menu.show();
           break;
       }
     });
@@ -312,6 +327,11 @@ export class Game {
       if (this.pickingRoad) this.finishRoadPick();
       else this.inspectTarget();
     });
+  }
+
+  private resumeFromMenu(): void {
+    this.menu.hide();
+    if (this.state === 'playing' && !this.uiOpen()) this.render.lock();
   }
 
   private confirmRestart(): void {
@@ -597,6 +617,7 @@ export class Game {
   }
 
   private toggleJournal(): void {
+    if (this.uiOpen() && !this.journal.isOpen()) return;
     if (this.journal.isOpen()) {
       this.closePanelsAndRelock();
     } else {
@@ -609,6 +630,7 @@ export class Game {
   // --- Sandbox -----------------------------------------------------------------------
 
   private toggleSandbox(): void {
+    if (this.uiOpen() && !this.sandboxPanel.isOpen()) return;
     if (this.mode === 'sandbox') this.exitSandbox();
     else this.enterSandbox();
   }
@@ -636,8 +658,7 @@ export class Game {
   private exitSandbox(relock = true): void {
     this.mode = 'world';
     this.pickingRoad = false;
-    this.selectedRoadId = null;
-    this.render.setHighlight(null);
+    this.clearRoadSelection();
     this.sandboxPanel.close();
     this.render.setMode('world');
     this.render.setDayData(this.lastHistoryDay());
@@ -648,8 +669,10 @@ export class Game {
   }
 
   private startRoadPick(): void {
+    this.clearRoadSelection();
     this.pickingRoad = true;
     this.hud.setHint('Aim at a road and click to select it. Esc to cancel.');
+    this.sandboxPanel.suspendForRoadPick();
     this.render.lock();
   }
 
@@ -660,16 +683,26 @@ export class Game {
       this.sandboxPanel.setSelectedRoad(this.roadName(t.id));
       this.render.setHighlight(t);
     } else {
-      this.sandboxPanel.setSelectedRoad(null);
+      this.clearRoadSelection();
     }
     this.pickingRoad = false;
     this.render.unlock();
+    this.sandboxPanel.resumeAfterRoadPick();
+    this.hud.setHint('Configure a probe. The frozen policy will run on a copy of the district.');
   }
 
   private cancelRoadPick(): void {
     this.pickingRoad = false;
+    this.clearRoadSelection();
     this.hud.setHint('Configure a probe. The frozen policy will run on a copy of the district.');
     this.render.unlock();
+    this.sandboxPanel.resumeAfterRoadPick();
+  }
+
+  private clearRoadSelection(): void {
+    this.selectedRoadId = null;
+    this.sandboxPanel.setSelectedRoad(null);
+    this.render.setHighlight(null);
   }
 
   private runProbe(req: ProbeRequest): void {
@@ -704,6 +737,13 @@ export class Game {
     this.state = 'playback';
     let i = 0;
     const n = result.probe.length;
+    if (this.prefersReducedMotion()) {
+      const finalRecord = result.probe[result.probe.length - 1];
+      if (finalRecord) this.render.setDayData(finalRecord);
+      this.state = 'playing';
+      this.sandboxPanel.showResult(this.buildResultView(result));
+      return;
+    }
     const tick = () => {
       const rec = result.probe[i];
       if (rec) {
@@ -721,6 +761,10 @@ export class Game {
     };
     this.playbackTimer = window.setInterval(tick, PLAYBACK_MS_PER_DAY);
     tick();
+  }
+
+  private prefersReducedMotion(): boolean {
+    return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
   private probeTitle(iv: Intervention): string {

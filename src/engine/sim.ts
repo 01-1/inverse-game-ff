@@ -311,15 +311,16 @@ export class Simulation {
       good: string,
       amount: number,
       reason: DeliveryRecord['reason'],
-    ): void => {
-      if (amount <= 0.5) return;
+    ): number => {
+      if (amount <= 0.5) return 0;
       const route = this.graph.shortestPath(from.node, to.node, closed);
       const delivered = route !== null;
       deliveries.push({ day: d, good, amount: Math.round(amount), from: from.id, to: to.id, route: route ?? [], delivered, reason });
-      if (!delivered) return;
+      if (!delivered) return 0;
       if (from.kind === 'warehouse') this.addStock(this.state.warehouseStock, from.id, good, -amount);
       if (to.kind === 'warehouse') this.addStock(this.state.warehouseStock, to.id, good, amount);
       if (to.kind === 'shop') this.addStock(this.state.shopStock, to.id, good, amount);
+      return amount;
     };
 
     // -- 1. Continuity surges: react to power threats at valued sites.
@@ -396,11 +397,12 @@ export class Simulation {
         // benefit of a unit exceeds the objective's value of holding it here.
         if (benefitPerUnit <= this.holdValue(g.id, wh.id)) continue;
         const amount = Math.min(stock, dailyCap - already);
-        releasedToday[g.id] = already + amount;
         // Released reserve is distributed to shops (largest shortfall first).
         const shops = this.shopsSelling(g.id);
         const perShop = amount / Math.max(1, shops.length);
-        for (const shop of shops) deliver(wh, shop, g.id, perShop, 'reserveRelease');
+        let deliveredAmount = 0;
+        for (const shop of shops) deliveredAmount += deliver(wh, shop, g.id, perShop, 'reserveRelease');
+        releasedToday[g.id] = already + deliveredAmount;
       }
     }
 

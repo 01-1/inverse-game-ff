@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { hashSeed, mulberry32 } from '../engine/rng';
 import type { BuildingDef, DayRecord, DistrictDef, EdgeDef, NodeDef } from '../engine/types';
+import { loadWithFallback } from './loading';
+import { directedRouteNodeIds } from './route';
 import type { CreateRenderApp, PickTarget, RenderApp, RenderMode } from './types';
 
 const WORLD_SCALE = 1.15;
@@ -216,11 +218,14 @@ class DistrictRenderApp implements RenderApp {
   private truckSpecialProto: THREE.Object3D | null = null;
   private loadProgress = 0;
   private loadTotal = 0;
+  private assetWarningCount = 0;
+  private readonly reducedMotionQuery: MediaQueryList;
 
   constructor(
     private readonly container: HTMLElement,
     private readonly district: DistrictDef,
   ) {
+    this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     for (const n of district.nodes) this.nodeById.set(n.id, n);
     for (const e of district.edges) this.edgeById.set(e.id, e);
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -229,6 +234,12 @@ class DistrictRenderApp implements RenderApp {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
+    this.renderer.domElement.tabIndex = 0;
+    this.renderer.domElement.setAttribute('role', 'application');
+    this.renderer.domElement.setAttribute(
+      'aria-label',
+      'Interactive map of Foundry Flats. Use W A S D to move, the mouse to look, F to inspect, J for the journal, and B for the sandbox.',
+    );
     container.appendChild(this.renderer.domElement);
     this.camera.position.set(-105, EYE_HEIGHT, -92);
     this.scene.add(this.worldRoot);
@@ -236,7 +247,7 @@ class DistrictRenderApp implements RenderApp {
     this.skyMat = this.sky.material as THREE.ShaderMaterial;
     this.scene.add(this.sky);
     this.buildStaticScene();
-    void this.loadAssets();
+    void this.loadAssets().catch((error: unknown) => this.finishAssetLoading(error));
     if (typeof ResizeObserver !== 'undefined') {
       this.resizeObserver = new ResizeObserver(() => this.resize());
       this.resizeObserver.observe(container);
@@ -249,6 +260,7 @@ class DistrictRenderApp implements RenderApp {
     window.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('mousemove', this.onMouseMove);
     document.addEventListener('pointerlockchange', this.onPointerLock);
+    this.reducedMotionQuery.addEventListener('change', this.onReducedMotionChange);
   }
 
   start(): void {
@@ -268,6 +280,7 @@ class DistrictRenderApp implements RenderApp {
     window.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mousemove', this.onMouseMove);
     document.removeEventListener('pointerlockchange', this.onPointerLock);
+    this.reducedMotionQuery.removeEventListener('change', this.onReducedMotionChange);
   }
 
   onProgress(cb: (loaded: number, total: number) => void): void {
@@ -277,6 +290,10 @@ class DistrictRenderApp implements RenderApp {
 
   isReady(): boolean {
     return this.ready;
+  }
+
+  getAssetWarningCount(): number {
+    return this.assetWarningCount;
   }
 
   setMode(mode: RenderMode): void {
@@ -612,9 +629,43 @@ class DistrictRenderApp implements RenderApp {
     if (!p) {
       const url = `${MODEL_BASE}${file}`;
       p = this.loader.loadAsync(url).then((g) => g.scene);
+      p.catch(() => this.modelCache.delete(file));
       this.modelCache.set(file, p);
     }
     return (await p).clone(true);
+  }
+
+  private async loadModelOrFallback(file: string, fallback: () => THREE.Object3D): Promise<THREE.Object3D> {
+    return loadWithFallback(
+      () => this.loadModel(file),
+      fallback,
+      (error) => {
+        this.assetWarningCount += 1;
+        console.warn(`Using simplified fallback for ${file}`, error);
+      },
+    );
+  }
+
+  private fallbackBuilding(kind: BuildingDef['kind']): THREE.Object3D {
+    const height = kind === 'warehouse' || kind === 'depot' ? 5 : kind === 'datacenter' ? 8 : 6;
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(8, height, 8),
+      new THREE.MeshStandardMaterial({ color: tintForKind(kind), roughness: 0.9 }),
+    );
+  }
+
+  private fallbackVehicle(truck: boolean): THREE.Object3D {
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(truck ? 2.4 : 1.8, truck ? 1.3 : 0.9, truck ? 5 : 3.6),
+      new THREE.MeshStandardMaterial({ color: truck ? 0xdfe5ea : 0x71808a, roughness: 0.75 }),
+    );
+  }
+
+  private fallbackDressing(): THREE.Object3D {
+    return new THREE.Mesh(
+      new THREE.ConeGeometry(0.7, 2.8, 8),
+      new THREE.MeshStandardMaterial({ color: 0x6f8f63, roughness: 1 }),
+    );
   }
 
   private async loadAssets(): Promise<void> {
@@ -630,9 +681,9 @@ class DistrictRenderApp implements RenderApp {
 
     // Vehicle prototypes first so delivery playback works ASAP.
     const [truck, special, ...cars] = await Promise.all([
-      this.loadModel(TRUCK_MODEL),
-      this.loadModel(TRUCK_SPECIAL_MODEL),
-      ...VEHICLE_MODELS.map((m) => this.loadModel(m)),
+      this.loadModelOrFallback(TRUCK_MODEL, () => this.fallbackVehicle(true)),
+      this.loadModelOrFallback(TRUCK_SPECIAL_MODEL, () => this.fallbackVehicle(true)),
+      ...VEHICLE_MODELS.map((m) => this.loadModelOrFallback(m, () => this.fallbackVehicle(false))),
     ]);
     this.truckProto = truck!;
     this.truckSpecialProto = special!;
@@ -645,7 +696,7 @@ class DistrictRenderApp implements RenderApp {
       const files = BUILDING_MODELS[b.kind];
       const hash = [...b.id].reduce((s, c) => s + c.charCodeAt(0), 0);
       const file = files[hash % files.length]!;
-      const model = await this.loadModel(file);
+      const model = await this.loadModelOrFallback(file, () => this.fallbackBuilding(b.kind));
       this.placeBuilding(b, model);
       this.step(1);
     }
@@ -668,12 +719,7 @@ class DistrictRenderApp implements RenderApp {
       this.step(1);
     }
 
-    this.ready = true;
-    // Apply any state that arrived before models existed.
-    this.setMode(this.mode);
-    if (this.pendingDay !== null || this.dayData !== null) this.setDayData(this.pendingDay ?? this.dayData);
-    this.applyHighlights();
-    this.emitProgress();
+    this.finishAssetLoading();
   }
 
   private placeBuilding(b: BuildingDef, model: THREE.Object3D): void {
@@ -705,7 +751,7 @@ class DistrictRenderApp implements RenderApp {
     const rng = mulberry32(hashSeed(`plaza|${b.id}`));
     for (let i = 0; i < 10; i++) {
       const file = DRESSING_MODELS[Math.floor(rng() * DRESSING_MODELS.length)]!;
-      const item = await this.loadModel(file);
+      const item = await this.loadModelOrFallback(file, () => this.fallbackDressing());
       const scale = 4 + rng() * 2;
       item.scale.setScalar(scale);
       this.prepMaterials(item, undefined, false);
@@ -797,14 +843,11 @@ class DistrictRenderApp implements RenderApp {
     this.deliverySprites.length = 0;
     if (!rec || !this.truckProto || !this.truckSpecialProto) return;
     for (const [i, d] of rec.deliveries.filter((delivery) => delivery.delivered).slice(0, 24).entries()) {
-      const route = d.route.flatMap((edgeId) => {
-        const e = this.edgeById.get(edgeId);
-        const a = e ? this.nodeById.get(e.a) : undefined;
-        return a ? [planToWorld(a)] : [];
+      const routeNodeIds = directedRouteNodeIds(this.district, d.from, d.to, d.route);
+      const route = (routeNodeIds ?? []).flatMap((nodeId) => {
+        const node = this.nodeById.get(nodeId);
+        return node ? [planToWorld(node)] : [];
       });
-      const lastEdge = this.edgeById.get(d.route[d.route.length - 1] ?? '');
-      const lastNode = lastEdge ? this.nodeById.get(lastEdge.b) : undefined;
-      if (lastNode) route.push(planToWorld(lastNode));
       if (route.length > 1) {
         const proto = d.to === 'W7' ? this.truckSpecialProto : this.truckProto;
         const mesh = proto.clone(true);
@@ -817,6 +860,8 @@ class DistrictRenderApp implements RenderApp {
           }
         });
         this.worldRoot.add(mesh);
+        mesh.position.copy(route[0]!);
+        mesh.position.y = 0.16;
         const rng = mulberry32(hashSeed(`${rec.day}|${i}|${d.from}|${d.to}|${d.good}|${d.amount}|${d.reason}|${d.route.join(',')}`));
         this.deliverySprites.push({ mesh, route, phase: rng() });
       }
@@ -832,6 +877,22 @@ class DistrictRenderApp implements RenderApp {
 
   private emitProgress(): void {
     for (const cb of this.progressCbs) cb(this.loadProgress, this.loadTotal);
+  }
+
+  private finishAssetLoading(error?: unknown): void {
+    if (this.ready) return;
+    if (error !== undefined) {
+      this.assetWarningCount += 1;
+      console.error('Unexpected asset setup failure; continuing with the procedural district.', error);
+    }
+    this.ready = true;
+    this.loadProgress = Math.max(this.loadProgress, this.loadTotal || 1);
+    this.loadTotal = Math.max(this.loadTotal, 1);
+    // Apply any state that arrived before models existed.
+    this.setMode(this.mode);
+    if (this.pendingDay !== null || this.dayData !== null) this.setDayData(this.pendingDay ?? this.dayData);
+    this.applyHighlights();
+    this.emitProgress();
   }
 
   // --- Frame ------------------------------------------------------------------
@@ -875,6 +936,18 @@ class DistrictRenderApp implements RenderApp {
   }
 
   private animateTraffic(t: number): void {
+    if (this.reducedMotionQuery.matches) {
+      for (const mesh of this.trafficSprites) mesh.visible = false;
+      for (const delivery of this.deliverySprites) {
+        const a = delivery.route[0];
+        const b = delivery.route[1];
+        if (!a || !b) continue;
+        delivery.mesh.position.copy(a);
+        delivery.mesh.position.y = 0.16;
+        delivery.mesh.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+      }
+      return;
+    }
     const edges = this.district.edges;
     for (let i = 0; i < this.trafficSprites.length; i++) {
       const edge = edges[i % edges.length];
@@ -985,6 +1058,11 @@ class DistrictRenderApp implements RenderApp {
 
   private readonly onPointerLock = (): void => {
     for (const cb of this.lockCbs) cb(this.isLocked());
+  };
+
+  private readonly onReducedMotionChange = (): void => {
+    if (!this.reducedMotionQuery.matches) return;
+    for (const mesh of this.trafficSprites) mesh.visible = false;
   };
 }
 

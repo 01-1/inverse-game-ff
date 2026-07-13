@@ -302,6 +302,14 @@ h3 {
   background: var(--accent);
   box-shadow: 0 0 8px var(--accent-glow);
 }
+.input-warning {
+  padding: 10px 14px;
+  border: 1px solid rgba(239, 125, 112, 0.5);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--r-2);
+  background: var(--danger-soft);
+  color: var(--t-hi);
+}
 
 /* --- Callouts ------------------------------------------------------------- */
 .objective {
@@ -561,5 +569,10 @@ select:focus-visible { outline: none; border-color: var(--teal); box-shadow: var
 
 /* --- Reduced motion ------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
 }

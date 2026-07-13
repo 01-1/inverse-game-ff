@@ -25,7 +25,7 @@ npm test
 - `WASD` move
 - Mouse look with pointer lock
 - Left click or `F` inspect the road/building under the reticle
-- `Tab` journal
+- `J` journal
 - `B` sandbox
 - `G` commit at a suspected artifact building
 - `Esc` release pointer / pause

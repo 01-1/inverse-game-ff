@@ -49,6 +49,8 @@ export interface RenderApp {
   onProgress(cb: (loaded: number, total: number) => void): void;
   /** True once all world models are loaded and placed. */
   isReady(): boolean;
+  /** Number of assets replaced with simplified procedural fallbacks. */
+  getAssetWarningCount(): number;
 }
 
 export interface CreateRenderApp {
